@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>星空おすすめマップ — プロトタイプ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root{
+    --bg:#0a1428; --panel:#0f1c3a; --panel2:#152545; --text:#e6ecff;
+    --muted:#9aa6c7; --accent:#7fb3ff; --line:#1f2f55;
+    --good:#22c55e; --ok:#84cc16; --mid:#eab308; --warn:#f97316; --bad:#ef4444;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,"Hiragino Sans","Yu Gothic",system-ui,sans-serif}
+  #app{display:grid;grid-template-columns:340px 1fr;height:100vh}
+  @media(max-width:780px){
+    #app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    #side{max-height:42vh;overflow:auto}
+  }
+  #side{background:var(--panel);border-right:1px solid var(--line);padding:14px 16px;overflow:auto}
+  #map{height:100%;width:100%;background:#0c1c3a}
+  h1{font-size:16px;margin:0 0 4px;color:var(--accent)}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:12px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+  .card h2{font-size:12px;margin:0 0 8px;color:var(--accent);letter-spacing:.04em;text-transform:uppercase}
+  label{display:block;font-size:12px;margin-top:6px;color:var(--muted)}
+  input[type="range"]{width:100%}
+  select,input[type="datetime-local"]{width:100%;background:#0a1734;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px}
+  .row{display:flex;gap:8px;align-items:center}
+  .row > *{flex:1}
+  .ww{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .legend{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;font-size:11px;background:#0a1734;border:1px solid var(--line);border-radius:999px;padding:3px 8px;color:var(--muted)}
+  .chip i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+  .small{font-size:11px;color:var(--muted)}
+  button{background:var(--accent);color:#0a1428;border:0;border-radius:6px;padding:8px 10px;font-weight:600;cursor:pointer;font-size:12px}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+  .moon-row{display:flex;align-items:center;gap:8px}
+  .moon{width:28px;height:28px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fefae0 0%,#cbd5e1 60%,#475569 100%);position:relative;flex:0 0 28px}
+  .moon::after{content:"";position:absolute;inset:0;border-radius:50%;background:#0f1c3a;clip-path:inset(0 var(--phase,50%) 0 0)}
+  .leaflet-popup-content{font:13px/1.45 -apple-system,"Hiragino Sans",sans-serif;color:#0a1428;max-width:240px}
+  .pop-title{font-weight:700;margin-bottom:4px}
+  .pop-bar{height:6px;border-radius:4px;background:#e2e8f0;margin:4px 0;position:relative;overflow:hidden}
+  .pop-bar > span{position:absolute;left:0;top:0;bottom:0;background:#22c55e}
+  .pop-grid{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;font-size:12px;align-items:center}
+  .pop-grid .lab{color:#475569}
+  .pop-grid .val{font-variant-numeric:tabular-nums;font-weight:600}
+  .footer{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5}
+  a{color:var(--accent)}
+
+  .loc-weather{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+  .loc-where{color:var(--muted);font-size:11px;margin-bottom:6px}
+  .loc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .lw-item{background:#0a1734;border:1px solid var(--line);border-radius:6px;padding:6px 4px;text-align:center}
+  .lw-lab{font-size:10px;color:var(--muted);margin-bottom:2px}
+  .lw-val{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--text)}
+
+  .near-list{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow:auto}
+  .near-item{display:grid;grid-template-columns:36px 1fr auto;gap:8px;align-items:center;background:#0a1734;border:1px solid var(--line);border-radius:8px;padding:8px;cursor:pointer;transition:background .15s}
+  .near-item:hover{background:#13234a}
+  .near-badge{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:#0a1428;border:2px solid #0a1428}
+  .near-name{font-size:12px;font-weight:600;line-height:1.25}
+  .near-meta{font-size:10px;color:var(--muted);margin-top:2px}
+  .near-dist{font-size:11px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+
+  ul.crit{margin:6px 0 0;padding-left:16px;font-size:11px;color:var(--text);line-height:1.55}
+  ul.crit li{margin-bottom:2px}
+  code{background:#0a1734;padding:1px 4px;border-radius:3px;font-size:10.5px;color:var(--accent)}
+
+  /* レイヤートグル */
+  .toggle{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#0a1734;border:1px solid var(--line);margin-bottom:6px;cursor:pointer;user-select:none}
+  .toggle:hover{background:#13234a}
+  .toggle input{accent-color:var(--accent);width:16px;height:16px;cursor:pointer}
+  .toggle .tx{flex:1}
+  .toggle .ttitle{font-size:12px;font-weight:600;color:var(--text)}
+  .toggle .tdesc{font-size:10px;color:var(--muted);margin-top:2px;line-height:1.3}
+  .toggle .tswatch{width:18px;height:18px;border-radius:4px;border:1px solid #2a3a60}
+  .layer-loading{font-size:10px;color:var(--accent);margin-top:4px;display:none}
+  .layer-loading.show{display:block}
+
+  /* 凡例（マップ上） */
+  .map-legend{background:rgba(15,28,58,.92);color:#e6ecff;padding:8px 10px;border-radius:8px;font-size:11px;line-height:1.5;border:1px solid var(--line)}
+  .map-legend .lh{font-weight:700;margin-bottom:4px;color:var(--accent)}
+  .map-legend .grad{display:flex;align-items:center;gap:4px;margin-top:2px}
+  .map-legend .gbar{width:90px;height:8px;border-radius:4px}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <h1>★ 星空おすすめマップ</h1>
+    <div class="sub">気象 × 光害 × 月齢 × アクセス性 で観測スポットの「今夜のおすすめ度」を可視化（プロトタイプ）</div>
+
+    <div class="card">
+      <h2>観測時刻</h2>
+      <input id="when" type="datetime-local">
+      <div class="row" style="margin-top:6px">
+        <button id="btn-tonight" class="ghost">今夜21時</button>
+        <button id="btn-weekend" class="ghost">次の土曜21時</button>
+      </div>
+      <div id="locWeather" class="loc-weather">
+        <div class="loc-where small">基準地点を取得中…</div>
+        <div class="loc-grid" id="locGrid">
+          <div class="lw-item"><div class="lw-lab">雲量</div><div class="lw-val" id="lwCloud">—</div></div>
+          <div class="lw-item"><div class="lw-lab">湿度</div><div class="lw-val" id="lwHum">—</div></div>
+          <div class="lw-item"><div class="lw-lab">気温</div><div class="lw-val" id="lwTemp">—</div></div>
+          <div class="lw-item"><div class="lw-lab">風</div><div class="lw-val" id="lwWind">—</div></div>
+          <div class="lw-item"><div class="lw-lab">視程</div><div class="lw-val" id="lwVis">—</div></div>
+          <div class="lw-item"><div class="lw-lab">星空</div><div class="lw-val" id="lwScore">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>付近のスポット <span id="nearCount" class="small" style="color:var(--muted);font-weight:normal;text-transform:none;letter-spacing:0">（現在地未取得）</span></h2>
+      <div id="nearList" class="near-list">
+        <div class="small" style="color:var(--muted)">「現在地を取得」ボタンを押すと、距離順に近い観測候補地が並びます。</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>あなたの場所</h2>
+      <div class="row">
+        <button id="geo">現在地を取得</button>
+        <button id="clearGeo" class="ghost">解除</button>
+      </div>
+      <div id="geoInfo" class="small" style="margin-top:6px">未設定（アクセス性は満点扱い）</div>
+    </div>
+
+    <div class="card">
+      <h2>天体イベント</h2>
+      <div class="moon-row">
+        <div id="moonIcon" class="moon" style="--phase:60%"></div>
+        <div>
+          <div id="moonAge" style="font-size:13px">月齢: -</div>
+          <div id="moonNote" class="small">満月に近いほど星は見にくい</div>
+        </div>
+      </div>
+      <div id="events" class="small" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h2>マップレイヤー</h2>
+      <label class="toggle">
+        <input type="checkbox" id="lyrLP">
+        <span class="tswatch" style="background:linear-gradient(90deg,#000 0%,#0a3d62 25%,#d97706 70%,#dc2626 100%)"></span>
+        <span class="tx">
+          <div class="ttitle">光害（ライトポリューション）</div>
+          <div class="tdesc">主要都市の人工光ドームを赤〜橙〜青で重畳。Bortle 推定の参考に。</div>
+        </span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="lyrCloud">
+        <span class="tswatch" style="background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(220,220,220,.4) 50%,rgba(255,255,255,.85) 100%);border-color:#888"></span>
+        <span class="tx">
+          <div class="ttitle">雲量予報（観測時刻）</div>
+          <div class="tdesc">Open-Meteo を 8×8 グリッドで取得し、白いほど厚い雲。時刻スライダーに連動。</div>
+        </span>
+      </label>
+      <div id="cloudLoading" class="layer-loading">雲量を取得中…</div>
+    </div>
+
+    <div class="card">
+      <h2>凡例</h2>
+      <div class="legend">
+        <span class="chip"><i style="background:var(--good)"></i>80+ 最高</span>
+        <span class="chip"><i style="background:var(--ok)"></i>65–80 良</span>
+        <span class="chip"><i style="background:var(--mid)"></i>50–65 普通</span>
+        <span class="chip"><i style="background:var(--warn)"></i>35–50 厳しい</span>
+        <span class="chip"><i style="background:var(--bad)"></i>~35 不向き</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>マップ表示の基準</h2>
+      <div class="small" style="line-height:1.6">
+        本プロトタイプは <b>事前にキュレーションした全国16箇所</b> の観測候補地のみを地図に表示しています。選定基準は次の通りです。
+      </div>
+      <ul class="crit">
+        <li><b>暗さ</b>：推定 Bortle スケール 2〜5 の地点（光害が比較的少ない場所）。</li>
+        <li><b>知名度・実績</b>：天文ファンや観望会で実際に使われている既知のスポット。</li>
+        <li><b>地理的分布</b>：北海道〜中国地方まで広域カバーし、関東近郊は密に配置。</li>
+        <li><b>アクセス性</b>：駐車場の有無・夜間到達のしやすさを考慮（一部山間部除く）。</li>
+        <li><b>ダークスカイ認定</b>：井原市美星町・神津島・阿智村など国際／国内認定地を優先採用。</li>
+      </ul>
+      <div class="small" style="color:var(--muted);margin-top:6px">
+        将来拡張：OSM の <code>tourism=viewpoint</code> や自治体オープンデータ、ユーザー投稿で全国数千地点に拡張予定。
+      </div>
+      <div class="footer">
+        天気: Open-Meteo / 地図: OpenStreetMap / 月齢: クライアント計算 / 光害: スポット別の事前推定値<br>
+        本ツールはプロトタイプ。観測地の夜間立入可否は現地の最新情報を必ずご確認ください。
+      </div>
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ---------- Sample observation spots (Bortle値は概算) ----------
+const SPOTS = [
+  // name, lat, lon, bortle(1=最暗 9=最明), parking(true/false), note
+  ["長野・阿智村 ヘブンスそのはら", 35.4044, 137.6822, 2, true, "日本一の星空。リフトでさらに高所へ"],
+  ["山梨・八ヶ岳 美し森", 35.9258, 138.4231, 3, true, "標高1500m。視界開放"],
+  ["静岡・富士山スカイライン 五合目", 35.3328, 138.7314, 2, true, "夏期のみ通行可"],
+  ["神奈川・三浦半島 三崎口", 35.1639, 139.6128, 5, true, "都心から最寄り。海方向は暗い"],
+  ["千葉・九十九里 一宮海岸", 35.3819, 140.3811, 4, true, "東〜南は太平洋で真っ暗"],
+  ["群馬・赤城山 覚満淵", 36.5489, 139.1894, 3, true, "標高1300m。駐車場すぐ"],
+  ["栃木・霧降高原 大笹牧場", 36.7847, 139.5481, 3, true, "広い駐車場と展望"],
+  ["茨城・筑波山 つつじヶ丘", 36.2192, 140.1064, 4, true, "ロープウェイあり"],
+  ["埼玉・堂平天文台", 36.0008, 139.1717, 4, true, "宿泊・観望会あり"],
+  ["東京・奥多摩湖 大麦代園地", 35.7853, 139.0522, 4, true, "都内で最も暗いエリアの一つ"],
+  ["新潟・苗場山麓 秋山郷", 36.8519, 138.6586, 2, false, "山間部、駐車スペース要確認"],
+  ["福島・裏磐梯 五色沼", 37.6586, 140.0731, 3, true, "周囲の宿あり"],
+  ["岡山・井原市美星町", 34.6747, 133.5469, 2, true, "アジア初の国際ダークスカイ・コミュニティ"],
+  ["長野・阿智村 浪合パーク", 35.3700, 137.6258, 2, true, "ライトダウン運用の星見公園"],
+  ["神津島・天上山", 34.2167, 139.1503, 2, false, "国際ダークスカイ・パーク"],
+  ["北海道・陸別町 銀河の森天文台", 43.4669, 143.7531, 2, true, "国内有数の暗夜"],
+];
+
+// ---------- Major meteor showers (peak date in JST roughly) ----------
+const SHOWERS = [
+  ["しぶんぎ座流星群", "01-04"],
+  ["こと座流星群", "04-22"],
+  ["みずがめ座η流星群", "05-06"],
+  ["ペルセウス座流星群", "08-13"],
+  ["オリオン座流星群", "10-22"],
+  ["しし座流星群", "11-17"],
+  ["ふたご座流星群", "12-14"],
+  ["こぐま座流星群", "12-22"],
+];
+
+// ---------- State ----------
+const state = {
+  when: roundToHour(new Date(Date.now() + 6*3600*1000)),
+  weights: {w1:45, w2:30, w3:15, w4:10}, // 固定（前バージョンの重み調整UIは廃止）
+  user: null, // {lat,lon}
+  cache: new Map(), // weather cache
+  markers: new Map(), // spotIdx -> leaflet marker
+};
+
+function roundToHour(d){ const x=new Date(d); x.setMinutes(0,0,0); return x; }
+function fmtLocal(d){ const off=d.getTimezoneOffset()*60000; return new Date(d-off).toISOString().slice(0,16); }
+
+// ---------- Astronomy: simple moon age ----------
+function moonAge(d){
+  // Conway's approx; returns 0..29.53
+  const y=d.getFullYear(), m=d.getMonth()+1, day=d.getDate()+(d.getHours()/24);
+  let yy=y, mm=m;
+  if(mm<3){yy-=1; mm+=12;}
+  const c=Math.floor(yy/100), b=2-c+Math.floor(c/4);
+  const jd=Math.floor(365.25*(yy+4716))+Math.floor(30.6001*(mm+1))+day+b-1524.5;
+  const days=jd-2451550.1;
+  const cycles=days/29.530588853;
+  const age=(cycles - Math.floor(cycles))*29.530588853;
+  return age;
+}
+function moonScore(age){
+  // new moon (0 or 29.5) -> 100; full moon (~14.77) -> 20
+  const dist=Math.min(age, 29.530588853-age); // 0..14.77
+  return Math.round(20 + (dist/14.7653)*80);
+}
+
+// ---------- Distance / access ----------
+function haversine(a,b){
+  const R=6371, toRad=x=>x*Math.PI/180;
+  const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon);
+  const s=Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function accessScore(spot){
+  if(!state.user) return 90;
+  const d=haversine(state.user,{lat:spot[1],lon:spot[2]}); // km
+  const t=d/50*60; // assume 50km/h avg
+  let s = 100 - Math.min(d,150)/1.5 - Math.min(t,180)/3;
+  if(spot[4]) s += 5;
+  return Math.max(0, Math.min(100, Math.round(s)));
+}
+
+// ---------- Bortle -> light pollution score ----------
+function lpScore(bortle){
+  // Bortle 1 -> 100, 9 -> 0
+  return Math.round(100 - (bortle-1)/8*100);
+}
+
+// ---------- Event score (moon + meteor bonus) ----------
+function eventScore(d){
+  const ageS = moonScore(moonAge(d));
+  const md = (d.getMonth()+1).toString().padStart(2,'0')+"-"+d.getDate().toString().padStart(2,'0');
+  // ±3日間のいずれかで群極大 => +ボーナス
+  let bonus=0; let active=null;
+  for(const [name,date] of SHOWERS){
+    const [mm,dd]=date.split('-').map(Number);
+    const peak = new Date(d.getFullYear(), mm-1, dd, 21, 0);
+    const diff = Math.abs((peak-d)/(86400*1000));
+    if(diff<=3){ const b = Math.round(15*(1-diff/3)); if(b>bonus){bonus=b; active=name;} }
+  }
+  return {score: Math.min(100, ageS+bonus), age:moonAge(d), shower:active, bonus};
+}
+
+// ---------- Weather (Open-Meteo) ----------
+async function fetchWeather(lat, lon, when){
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)},${when.toISOString().slice(0,13)}`;
+  if(state.cache.has(key)) return state.cache.get(key);
+  const start = new Date(when); start.setHours(start.getHours()-1);
+  const end = new Date(when); end.setHours(end.getHours()+2);
+  const params = new URLSearchParams({
+    latitude:lat, longitude:lon,
+    hourly:"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,wind_speed_10m",
+    timezone:"Asia/Tokyo",
+    start_date: when.toISOString().slice(0,10),
+    end_date: when.toISOString().slice(0,10),
+  });
+  try{
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    const j = await r.json();
+    const idx = j.hourly.time.findIndex(t=>t.startsWith(when.toISOString().slice(0,13)));
+    const i = idx>=0 ? idx : j.hourly.time.length-1;
+    const data = {
+      cloud: j.hourly.cloud_cover[i],
+      cloudLow: j.hourly.cloud_cover_low[i],
+      cloudMid: j.hourly.cloud_cover_mid[i],
+      cloudHigh: j.hourly.cloud_cover_high[i],
+      humidity: j.hourly.relative_humidity_2m[i],
+      visibility: j.hourly.visibility[i],
+      temp: j.hourly.temperature_2m[i],
+      wind: j.hourly.wind_speed_10m[i],
+    };
+    state.cache.set(key,data);
+    return data;
+  }catch(e){
+    return {cloud:50,cloudLow:30,cloudMid:20,cloudHigh:30,humidity:70,visibility:20000,temp:15,wind:3,_err:true};
+  }
+}
+function weatherScore(w){
+  // 低層雲は重め、視程と湿度で微調整
+  const cloudPen = w.cloud*0.6 + w.cloudLow*0.4; // 0..100
+  const humPen = Math.max(0,(w.humidity-70))*0.5; // 高湿度ペナルティ
+  const visBonus = Math.min(10, (w.visibility/1000-10)); // 10km超でちょいプラス
+  const s = 100 - cloudPen - humPen + visBonus;
+  return Math.max(0, Math.min(100, Math.round(s)));
+}
+
+// ---------- Compute total ----------
+function totalScore(weather, lp, ev, ac){
+  const w = state.weights;
+  const sum = w.w1+w.w2+w.w3+w.w4 || 1;
+  return Math.round((w.w1*weather + w.w2*lp + w.w3*ev + w.w4*ac)/sum);
+}
+function colorFor(s){
+  if(s>=80) return getCss('--good');
+  if(s>=65) return getCss('--ok');
+  if(s>=50) return getCss('--mid');
+  if(s>=35) return getCss('--warn');
+  return getCss('--bad');
+}
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+// ---------- Map ----------
+const map = L.map('map',{zoomControl:true}).setView([36.4,138.5], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'&copy; OpenStreetMap', maxZoom:18
+}).addTo(map);
+
+// ---------- 光害オーバーレイ（合成） ----------
+// 主要都市の人工光ドームを概算。population を Bortle 推定に変換。
+// data: [name, lat, lon, populationK, radiusKm]
+const CITY_LIGHTS = [
+  ["東京",     35.6895, 139.6917, 13960, 80],
+  ["横浜",     35.4437, 139.6380,  3770, 35],
+  ["大阪",     34.6937, 135.5023,  2750, 50],
+  ["名古屋",   35.1815, 136.9066,  2330, 40],
+  ["札幌",     43.0618, 141.3545,  1970, 35],
+  ["福岡",     33.5904, 130.4017,  1610, 30],
+  ["神戸",     34.6901, 135.1955,  1520, 25],
+  ["京都",     35.0116, 135.7681,  1460, 22],
+  ["川崎",     35.5308, 139.7029,  1540, 18],
+  ["さいたま", 35.8616, 139.6455,  1330, 22],
+  ["仙台",     38.2682, 140.8694,  1090, 28],
+  ["広島",     34.3853, 132.4553,  1190, 25],
+  ["千葉",     35.6074, 140.1065,   980, 22],
+  ["北九州",   33.8835, 130.8752,   930, 25],
+  ["新潟",     37.9026, 139.0233,   790, 22],
+  ["浜松",     34.7108, 137.7261,   790, 22],
+  ["熊本",     32.8031, 130.7079,   730, 22],
+  ["相模原",   35.5708, 139.3731,   720, 18],
+  ["岡山",     34.6551, 133.9195,   720, 22],
+  ["金沢",     36.5613, 136.6562,   460, 18],
+  ["長野",     36.6485, 138.1812,   370, 16],
+  ["甲府",     35.6638, 138.5683,   190, 12],
+  ["前橋",     36.3895, 139.0634,   330, 16],
+  ["宇都宮",   36.5551, 139.8828,   520, 18],
+  ["水戸",     36.3414, 140.4467,   270, 14],
+  ["静岡",     34.9756, 138.3828,   690, 22],
+  ["那覇",     26.2124, 127.6809,   320, 14],
+  ["旭川",     43.7706, 142.3650,   330, 18],
+  ["函館",     41.7687, 140.7290,   250, 14],
+  ["盛岡",     39.7036, 141.1527,   290, 14],
+  ["秋田",     39.7186, 140.1024,   300, 14],
+  ["山形",     38.2404, 140.3636,   240, 12],
+  ["福島",     37.7503, 140.4676,   280, 14],
+];
+const lpLayer = L.layerGroup();
+function buildLightPollution(){
+  lpLayer.clearLayers();
+  // 暗い背景の薄ベール（夜空の暗さを演出）
+  const bounds = [[20,120],[50,150]];
+  L.rectangle(bounds, {stroke:false, fillColor:'#000020', fillOpacity:0.18, interactive:false}).addTo(lpLayer);
+  for (const [name,lat,lon,pop,rKm] of CITY_LIGHTS){
+    // 中心(Bortle 8〜9)→外周(Bortle 4)へ多段リングで放射状ぼかし
+    const steps = 6;
+    for (let s=steps; s>=1; s--){
+      const f = s/steps;             // 1.0(外)→1/steps(中心)
+      const r = rKm*1000 * f;
+      // 色: 中心ほど赤・橙、外周は青みがかる
+      const inner = 1 - f;
+      const color = inner > 0.7 ? '#dc2626' :
+                    inner > 0.5 ? '#f97316' :
+                    inner > 0.3 ? '#fbbf24' :
+                    inner > 0.15? '#65a30d' : '#0a3d62';
+      const op = (1-f) * 0.18 * Math.min(1, pop/4000+0.3);
+      L.circle([lat,lon], {radius:r, color:'transparent', fillColor:color, fillOpacity:op, interactive:false}).addTo(lpLayer);
+    }
+  }
+}
+buildLightPollution();
+
+// ---------- 雲量オーバーレイ（Open-Meteo グリッド） ----------
+const cloudLayer = L.layerGroup();
+let cloudFetchToken = 0;
+async function buildCloudOverlay(){
+  const myToken = ++cloudFetchToken;
+  const loading = document.getElementById('cloudLoading');
+  loading.classList.add('show');
+  try{
+    const b = map.getBounds();
+    const n = 8;
+    const dLat = (b.getNorth()-b.getSouth())/n;
+    const dLon = (b.getEast()-b.getWest())/n;
+    const lats=[], lons=[], cells=[];
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+      const lat = b.getSouth() + dLat*(i+0.5);
+      const lon = b.getWest()  + dLon*(j+0.5);
+      lats.push(lat.toFixed(3)); lons.push(lon.toFixed(3));
+      cells.push([lat,lon,dLat,dLon]);
+    }
+    const params = new URLSearchParams({
+      latitude: lats.join(','),
+      longitude: lons.join(','),
+      hourly: 'cloud_cover,cloud_cover_low',
+      timezone: 'Asia/Tokyo',
+      start_date: state.when.toISOString().slice(0,10),
+      end_date: state.when.toISOString().slice(0,10),
+    });
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    if(myToken !== cloudFetchToken) return; // 古いリクエスト破棄
+    const j = await r.json();
+    const arr = Array.isArray(j) ? j : [j];
+    cloudLayer.clearLayers();
+    const targetHour = state.when.toISOString().slice(0,13);
+    arr.forEach((loc, idx) => {
+      if(!loc.hourly) return;
+      const hi = loc.hourly.time.findIndex(t => t.startsWith(targetHour));
+      const i = hi>=0 ? hi : 0;
+      const c   = loc.hourly.cloud_cover[i] ?? 50;
+      const cLow= loc.hourly.cloud_cover_low?.[i] ?? c*0.5;
+      const [lat,lon,dL,dLo] = cells[idx];
+      // 厚い雲ほど白く濃く描画
+      const opacity = Math.min(0.8, c/100*0.7 + (cLow/100)*0.15);
+      const fill = c > 80 ? '#ffffff' : c > 50 ? '#e2e8f0' : c > 20 ? '#94a3b8' : '#475569';
+      L.rectangle([[lat-dL/2, lon-dLo/2],[lat+dL/2, lon+dLo/2]], {
+        stroke:false, fillColor: fill, fillOpacity: opacity, interactive:false
+      }).addTo(cloudLayer);
+    });
+  } catch(e){
+    console.warn('cloud overlay failed', e);
+  } finally {
+    if(myToken === cloudFetchToken) loading.classList.remove('show');
+  }
+}
+
+// ---------- マップ凡例（光害／雲量） ----------
+const lpLegend = L.control({position:'bottomleft'});
+lpLegend.onAdd = function(){
+  const d = L.DomUtil.create('div','map-legend');
+  d.innerHTML = `<div class="lh">💡 光害の強さ</div>
+    <div class="grad"><span style="font-size:10px">弱</span>
+    <div class="gbar" style="background:linear-gradient(90deg,transparent,#0a3d62,#65a30d,#fbbf24,#f97316,#dc2626)"></div>
+    <span style="font-size:10px">強</span></div>
+    <div style="font-size:10px;color:#9aa6c7;margin-top:2px">主要都市の人工光ドーム概算</div>`;
+  return d;
+};
+const cloudLegendCtl = L.control({position:'bottomleft'});
+cloudLegendCtl.onAdd = function(){
+  const d = L.DomUtil.create('div','map-legend');
+  d.innerHTML = `<div class="lh">☁ 雲量（観測時刻の予報）</div>
+    <div class="grad"><span style="font-size:10px">晴</span>
+    <div class="gbar" style="background:linear-gradient(90deg,transparent,#94a3b8,#e2e8f0,#fff)"></div>
+    <span style="font-size:10px">厚雲</span></div>
+    <div style="font-size:10px;color:#9aa6c7;margin-top:2px">Open-Meteo を 8×8 グリッドで取得</div>`;
+  return d;
+};
+
+const layer = L.layerGroup().addTo(map);
+
+function pin(score){
+  const c = colorFor(score);
+  const html = `<div style="
+    width:34px;height:34px;border-radius:50%;
+    background:${c};color:#0a1428;font-weight:800;font-size:13px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 6px rgba(0,0,0,.5);border:2px solid #0a1428">${score}</div>`;
+  return L.divIcon({html, className:'', iconSize:[34,34], iconAnchor:[17,17]});
+}
+
+function bar(p){ return `<div class="pop-bar"><span style="width:${p}%;background:${colorFor(p)}"></span></div>`; }
+
+async function refresh(){
+  layer.clearLayers();
+  state.markers.clear();
+  const ev = eventScore(state.when);
+  document.getElementById('moonAge').textContent = `月齢: ${ev.age.toFixed(1)} (新月=暗い夜空)`;
+  document.getElementById('moonIcon').style.setProperty('--phase', `${(1 - Math.cos(ev.age/29.53*2*Math.PI))/2*100}%`);
+  document.getElementById('moonNote').textContent = ev.age<3||ev.age>26 ? "新月期：絶好の暗夜！" :
+                                                   ev.age<10||ev.age>20 ? "月明かりは控えめ" :
+                                                   "月明かりが強め — 月没後の観測を検討";
+  document.getElementById('events').innerHTML = ev.shower
+    ? `<b>${ev.shower}</b> 極大が±3日以内（イベントスコア +${ev.bonus}）`
+    : "本日±3日に主要流星群の極大はなし";
+
+  // (1) 基準地点（現在地 or マップ中心）の簡易気象
+  renderLocalWeather();
+
+  // (2) 全スポットのスコア計算
+  const items = await Promise.all(SPOTS.map(async (sp, idx) => {
+    const w = await fetchWeather(sp[1], sp[2], state.when);
+    const ws = weatherScore(w), ls = lpScore(sp[3]), es = ev.score, as = accessScore(sp);
+    const total = totalScore(ws, ls, es, as);
+    return {idx, sp, w, ws, ls, es, as, total};
+  }));
+
+  items.sort((a,b)=>b.total-a.total);
+  items.forEach(({idx,sp,w,ws,ls,es,as,total},i)=>{
+    const m = L.marker([sp[1],sp[2]], {icon:pin(total)}).addTo(layer);
+    const dist = state.user ? haversine(state.user,{lat:sp[1],lon:sp[2]}).toFixed(0)+"km" : "—";
+    const eta = state.user ? Math.round(haversine(state.user,{lat:sp[1],lon:sp[2]})/50*60)+"分" : "—";
+    const gmaps = state.user
+      ? `https://www.google.com/maps/dir/?api=1&origin=${state.user.lat},${state.user.lon}&destination=${sp[1]},${sp[2]}`
+      : `https://www.google.com/maps/search/?api=1&query=${sp[1]},${sp[2]}`;
+    const html = `
+      <div class="pop-title">${i+1}. ${sp[0]}</div>
+      <div class="small" style="color:#475569;margin-bottom:6px">${sp[5]}</div>
+      <div class="pop-grid">
+        <span class="lab">総合</span>${bar(total)}<span class="val">${total}</span>
+        <span class="lab">天候</span>${bar(ws)}<span class="val">${ws}</span>
+        <span class="lab">光害</span>${bar(ls)}<span class="val">${ls}</span>
+        <span class="lab">月/イベント</span>${bar(es)}<span class="val">${es}</span>
+        <span class="lab">アクセス</span>${bar(as)}<span class="val">${as}</span>
+      </div>
+      <div class="small" style="margin-top:6px;color:#475569">
+        雲量 ${w.cloud}% / 湿度 ${w.humidity}% / 視程 ${(w.visibility/1000).toFixed(0)}km / 風 ${w.wind}m/s<br>
+        Bortle ${sp[3]} ・ 駐車場${sp[4]?"あり":"要確認"} ・ 距離 ${dist} (約${eta})
+      </div>
+      <div style="margin-top:6px"><a href="${gmaps}" target="_blank">Google マップで経路を開く →</a></div>
+    `;
+    m.bindPopup(html, {maxWidth:280});
+    state.markers.set(idx, m);
+  });
+
+  // (3) 付近のスポット一覧
+  renderNearList(items);
+}
+
+// ---------- 基準地点の気象 ----------
+async function renderLocalWeather(){
+  const where = state.user
+    ? {lat:state.user.lat, lon:state.user.lon, label:`現在地 (${state.user.lat.toFixed(2)}, ${state.user.lon.toFixed(2)})`}
+    : (()=>{ const c=map.getCenter(); return {lat:c.lat, lon:c.lng, label:`地図中心 (${c.lat.toFixed(2)}, ${c.lng.toFixed(2)})`}; })();
+  document.querySelector('#locWeather .loc-where').textContent =
+    `基準地点: ${where.label} ／ ${state.when.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`;
+  const w = await fetchWeather(where.lat, where.lon, state.when);
+  const ws = weatherScore(w);
+  document.getElementById('lwCloud').textContent = `${w.cloud}%`;
+  document.getElementById('lwHum').textContent   = `${w.humidity}%`;
+  document.getElementById('lwTemp').textContent  = `${w.temp.toFixed(0)}°C`;
+  document.getElementById('lwWind').textContent  = `${w.wind.toFixed(1)} m/s`;
+  document.getElementById('lwVis').textContent   = `${(w.visibility/1000).toFixed(0)} km`;
+  const star = ws>=80?'◎':ws>=65?'○':ws>=50?'△':ws>=35?'▲':'×';
+  const sEl = document.getElementById('lwScore');
+  sEl.textContent = `${star} ${ws}`;
+  sEl.style.color = colorFor(ws);
+}
+
+// ---------- 付近のスポット一覧 ----------
+function renderNearList(items){
+  const list = document.getElementById('nearList');
+  const countEl = document.getElementById('nearCount');
+  if(!state.user){
+    countEl.textContent = "（現在地未取得）";
+    list.innerHTML = `<div class="small" style="color:var(--muted)">「現在地を取得」ボタンを押すと、距離順に近い観測候補地が並びます。<br>現在は <b>総合スコア順</b> で全スポットを表示中。</div>` +
+      items.slice(0,8).map(it => nearItemHtml(it, null)).join('');
+  } else {
+    const withDist = items.map(it => ({...it, dist: haversine(state.user, {lat:it.sp[1], lon:it.sp[2]})}));
+    withDist.sort((a,b)=>a.dist-b.dist);
+    const top = withDist.slice(0,8);
+    countEl.textContent = `（近い順 上位 ${top.length} 件 / 全 ${items.length} 件）`;
+    list.innerHTML = top.map(it => nearItemHtml(it, it.dist)).join('');
+  }
+  list.querySelectorAll('.near-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const idx = Number(el.dataset.idx);
+      const sp = SPOTS[idx];
+      const m = state.markers.get(idx);
+      map.flyTo([sp[1], sp[2]], 9, {duration:0.6});
+      if(m) setTimeout(()=>m.openPopup(), 650);
+    });
+  });
+}
+function nearItemHtml(it, dist){
+  const sp = it.sp;
+  const distStr = dist!=null
+    ? `${dist.toFixed(0)} km<br><span style="color:var(--muted)">約${Math.round(dist/50*60)}分</span>`
+    : `総合 ${it.total}`;
+  return `
+    <div class="near-item" data-idx="${it.idx}">
+      <div class="near-badge" style="background:${colorFor(it.total)}">${it.total}</div>
+      <div>
+        <div class="near-name">${sp[0]}</div>
+        <div class="near-meta">天候 ${it.ws} ・ 光害 ${it.ls} ・ Bortle ${sp[3]} ${sp[4]?'・ 🅿︎':''}</div>
+      </div>
+      <div class="near-dist">${distStr}</div>
+    </div>`;
+}
+
+// ---------- UI bindings ----------
+const wel = document.getElementById('when');
+wel.value = fmtLocal(state.when);
+wel.addEventListener('change', e=>{ state.when = roundToHour(new Date(e.target.value)); state.cache.clear(); refresh(); });
+document.getElementById('btn-tonight').onclick = ()=>{
+  const d=new Date(); d.setHours(21,0,0,0); if(d<new Date()) d.setDate(d.getDate()+1);
+  state.when=d; wel.value=fmtLocal(d); state.cache.clear(); refresh();
+};
+document.getElementById('btn-weekend').onclick = ()=>{
+  const d=new Date(); const day=d.getDay(); const add=(6-day+7)%7||7;
+  d.setDate(d.getDate()+add); d.setHours(21,0,0,0);
+  state.when=d; wel.value=fmtLocal(d); state.cache.clear(); refresh();
+};
+document.getElementById('geo').onclick = ()=>{
+  if(!navigator.geolocation){ alert('Geolocation 非対応'); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    state.user={lat:pos.coords.latitude, lon:pos.coords.longitude};
+    document.getElementById('geoInfo').textContent = `現在地: ${state.user.lat.toFixed(3)}, ${state.user.lon.toFixed(3)}`;
+    L.circleMarker([state.user.lat, state.user.lon],{radius:8,color:'#7fb3ff',fillColor:'#7fb3ff',fillOpacity:.6}).addTo(layer).bindPopup('あなたの位置');
+    map.setView([state.user.lat, state.user.lon], 7);
+    refresh();
+  }, err=> alert('位置情報が取得できません: '+err.message));
+};
+document.getElementById('clearGeo').onclick=()=>{ state.user=null; document.getElementById('geoInfo').textContent='未設定（アクセス性は満点扱い）'; refresh(); };
+
+// マップ移動：基準地点の天気更新（現在地未設定時のみ）＋ 雲量レイヤーが ON なら再取得
+let panTimer=null;
+map.on('moveend', ()=>{
+  clearTimeout(panTimer);
+  panTimer=setTimeout(()=>{
+    if(!state.user) renderLocalWeather();
+    if(document.getElementById('lyrCloud').checked) buildCloudOverlay();
+  }, 400);
+});
+
+// レイヤートグル
+document.getElementById('lyrLP').addEventListener('change', e => {
+  if(e.target.checked){ map.addLayer(lpLayer); lpLegend.addTo(map); }
+  else { map.removeLayer(lpLayer); map.removeControl(lpLegend); }
+});
+document.getElementById('lyrCloud').addEventListener('change', e => {
+  if(e.target.checked){ map.addLayer(cloudLayer); cloudLegendCtl.addTo(map); buildCloudOverlay(); }
+  else { map.removeLayer(cloudLayer); map.removeControl(cloudLegendCtl); }
+});
+
+// 観測時刻が変わったら、雲量レイヤーが ON のときは再取得
+const _origRefresh = refresh;
+refresh = async function(){
+  await _origRefresh();
+  if(document.getElementById('lyrCloud').checked) buildCloudOverlay();
+};
+
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Node
+node_modules/
+package.json
+package-lock.json
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build artifacts
+*.command
+*.log
+.upload_success.log
