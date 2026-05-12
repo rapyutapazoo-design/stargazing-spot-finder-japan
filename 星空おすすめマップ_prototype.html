@@ -100,10 +100,19 @@
   .layer-loading.show{display:block}
 
   /* 凡例（マップ上） */
-  .map-legend{background:rgba(15,28,58,.92);color:#e6ecff;padding:8px 10px;border-radius:8px;font-size:11px;line-height:1.5;border:1px solid var(--line)}
+  .map-legend{background:rgba(15,28,58,.94);color:#e6ecff;padding:8px 10px;border-radius:8px;font-size:11px;line-height:1.5;border:1px solid var(--line);max-width:300px}
   .map-legend .lh{font-weight:700;margin-bottom:4px;color:var(--accent)}
+  .map-legend .lh-sub{font-weight:400;font-size:10px;color:var(--muted);margin-left:6px}
   .map-legend .grad{display:flex;align-items:center;gap:4px;margin-top:2px}
   .map-legend .gbar{width:90px;height:8px;border-radius:4px}
+  .map-legend .lf{font-size:9.5px;color:#9aa6c7;margin-top:6px;line-height:1.4}
+
+  /* NSB 凡例 */
+  .nsb-legend{max-width:280px}
+  .nsb-grid{display:grid;grid-template-columns:14px 56px 1fr;gap:4px 6px;align-items:center;margin-top:4px}
+  .nsb-c{width:14px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);box-shadow:0 0 0 1px rgba(0,0,0,.25) inset}
+  .nsb-v{font-variant-numeric:tabular-nums;font-weight:600;font-size:10.5px;color:#e6ecff}
+  .nsb-d{font-size:10px;color:#cbd5e1;line-height:1.3}
 </style>
 </head>
 <body>
@@ -193,10 +202,10 @@
       <h2>マップレイヤー</h2>
       <label class="toggle">
         <input type="checkbox" id="lyrLP">
-        <span class="tswatch" style="background:linear-gradient(90deg,#000 0%,#0a3d62 25%,#d97706 70%,#dc2626 100%)"></span>
+        <span class="tswatch" style="background:linear-gradient(90deg,#0c0828 0%,#191e5a 20%,#2c70d4 45%,#22b87a 65%,#e5d028 78%,#eb8d22 88%,#e23232 100%)"></span>
         <span class="tx">
-          <div class="ttitle">光害（ライトポリューション）</div>
-          <div class="tdesc">主要都市の人工光ドームを赤〜橙〜青で重畳。Bortle 推定の参考に。</div>
+          <div class="ttitle">光害（NSB 等級）</div>
+          <div class="tdesc">夜空の明るさを mag/arcsec² で色分け表示（参考: 環境省／日本光害マップ）。</div>
         </span>
       </label>
       <label class="toggle">
@@ -451,27 +460,90 @@ const CITY_LIGHTS = [
   ["福島",     37.7503, 140.4676,   280, 14],
 ];
 const lpLayer = L.layerGroup();
+// ---- NSB (Night Sky Brightness, mag/arcsec²) スケール ----
+// astrotourism.jp / Falchi 2016 の標準パレットに準拠
+// 数値が大きいほど暗く (= 良い)。21.5+ で天の川がよく見える。
+const NSB_BANDS = [
+  // [下限, 色 (rgb), 説明]
+  [22.0, [12, 8, 40],      "天の川の構造まで見える（離島・高山）"],
+  [21.5, [25, 28, 90],     "山岳・海岸の暗さ、天の川がよく見える"],
+  [21.0, [40, 55, 160],    "郊外の暗さ、天の川が見え始める"],
+  [20.5, [55, 110, 220],   "郊外〜住宅地境界、淡い銀河は厳しい"],
+  [20.0, [45, 175, 200],   "住宅地外周、星座はくっきり"],
+  [19.5, [60, 195, 110],   "住宅地、星座の形がよく分かる"],
+  [19.0, [225, 220, 40],   "市街地、明るい星のみ"],
+  [18.5, [235, 140, 30],   "都市部、星座が分かり始める"],
+  [18.0, [225, 50, 50],    "大都市部、星はほとんど見えない"],
+  [-Infinity, [255, 90, 220], "都心部、夜空が赤橙色に光る"],
+];
+function nsbToColor(nsb){
+  for (const b of NSB_BANDS) if (nsb >= b[0]) return b[1];
+  return NSB_BANDS[NSB_BANDS.length-1][1];
+}
+function nsbToDesc(nsb){
+  for (const b of NSB_BANDS) if (nsb >= b[0]) return b[2];
+  return "—";
+}
+// Bortle → NSB の代表値
+function bortleToNSB(b){
+  // 線形補間: 1→22.0, 2→21.85, 3→21.6, 4→21.2, 5→20.6, 6→19.5, 7→18.7, 8→18.1, 9→17.5
+  const table = [22.0, 22.0, 21.85, 21.6, 21.2, 20.6, 19.5, 18.7, 18.1, 17.5];
+  return table[Math.max(1, Math.min(9, Math.round(b)))];
+}
+
+// ---- NSB ラスター（Canvas で生成して imageOverlay として表示） ----
+const LP_BOUNDS = [[24.0, 122.0], [46.5, 146.5]]; // 日本ざっくり
 function buildLightPollution(){
   lpLayer.clearLayers();
-  // 暗い背景の薄ベール（夜空の暗さを演出）
-  const bounds = [[20,120],[50,150]];
-  L.rectangle(bounds, {stroke:false, fillColor:'#000020', fillOpacity:0.18, interactive:false}).addTo(lpLayer);
-  for (const [name,lat,lon,pop,rKm] of CITY_LIGHTS){
-    // 中心(Bortle 8〜9)→外周(Bortle 4)へ多段リングで放射状ぼかし
-    const steps = 6;
-    for (let s=steps; s>=1; s--){
-      const f = s/steps;             // 1.0(外)→1/steps(中心)
-      const r = rKm*1000 * f;
-      // 色: 中心ほど赤・橙、外周は青みがかる
-      const inner = 1 - f;
-      const color = inner > 0.7 ? '#dc2626' :
-                    inner > 0.5 ? '#f97316' :
-                    inner > 0.3 ? '#fbbf24' :
-                    inner > 0.15? '#65a30d' : '#0a3d62';
-      const op = (1-f) * 0.18 * Math.min(1, pop/4000+0.3);
-      L.circle([lat,lon], {radius:r, color:'transparent', fillColor:color, fillOpacity:op, interactive:false}).addTo(lpLayer);
+
+  // 1) 漆黒ベース層（夜空全体）
+  L.rectangle(LP_BOUNDS, {stroke:false, fillColor:'#08051c', fillOpacity:0.55, interactive:false}).addTo(lpLayer);
+
+  // 2) NSB ラスター
+  const W = 480, H = 440;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+
+  const latMin = LP_BOUNDS[0][0], latMax = LP_BOUNDS[1][0];
+  const lonMin = LP_BOUNDS[0][1], lonMax = LP_BOUNDS[1][1];
+
+  // 自然光のキャリブレーション。L0 を大きくすると周辺がより暗く表示される。
+  const L0 = 250;
+
+  for (let py = 0; py < H; py++){
+    const lat = latMax - (py/H) * (latMax - latMin);
+    const cosLat = Math.cos(lat * Math.PI/180);
+    for (let px = 0; px < W; px++){
+      const lon = lonMin + (px/W) * (lonMax - lonMin);
+      // 全都市からの光寄与を合算（1/(d+r0)² 減衰）
+      let Lsum = 0;
+      for (let i = 0; i < CITY_LIGHTS.length; i++){
+        const c = CITY_LIGHTS[i];
+        const dLat = (lat - c[1]) * 111;             // km
+        const dLon = (lon - c[2]) * 111 * cosLat;    // km
+        const d2   = dLat*dLat + dLon*dLon;
+        const r0   = 6;                              // ソフトコア半径
+        Lsum += c[3] / (d2 + r0*r0);                 // pop / (d+r0)²
+      }
+      // NSB = 22 - 2.5*log10(1 + L/L0)
+      const nsb = 22 - 2.5 * Math.log10(1 + Lsum / L0);
+      const [r,g,b] = nsbToColor(nsb);
+      // 暗い地域はベース（漆黒）を透過させる、明るい地域は不透明寄り
+      const alpha = nsb >= 21.6 ? 60 :
+                    nsb >= 21.0 ? 130 :
+                    nsb >= 20.0 ? 180 :
+                    nsb >= 19.0 ? 215 : 240;
+      const idx = (py * W + px) * 4;
+      img.data[idx]   = r;
+      img.data[idx+1] = g;
+      img.data[idx+2] = b;
+      img.data[idx+3] = alpha;
     }
   }
+  ctx.putImageData(img, 0, 0);
+  L.imageOverlay(canvas.toDataURL(), LP_BOUNDS, {opacity:0.85, interactive:false}).addTo(lpLayer);
 }
 buildLightPollution();
 
@@ -532,12 +604,22 @@ async function buildCloudOverlay(){
 // ---------- マップ凡例（光害／雲量） ----------
 const lpLegend = L.control({position:'bottomleft'});
 lpLegend.onAdd = function(){
-  const d = L.DomUtil.create('div','map-legend');
-  d.innerHTML = `<div class="lh">💡 光害の強さ</div>
-    <div class="grad"><span style="font-size:10px">弱</span>
-    <div class="gbar" style="background:linear-gradient(90deg,transparent,#0a3d62,#65a30d,#fbbf24,#f97316,#dc2626)"></div>
-    <span style="font-size:10px">強</span></div>
-    <div style="font-size:10px;color:#9aa6c7;margin-top:2px">主要都市の人工光ドーム概算</div>`;
+  const d = L.DomUtil.create('div','map-legend nsb-legend');
+  // NSB バンド凡例（暗い順）
+  const rows = NSB_BANDS.map(b => {
+    const lo = isFinite(b[0]) ? b[0].toFixed(1) : "—";
+    const label = isFinite(b[0]) ? `≥ ${lo}` : "< 18.0";
+    const [r,g,bl] = b[1];
+    return `<div class="nsb-row">
+      <span class="nsb-c" style="background:rgb(${r},${g},${bl})"></span>
+      <span class="nsb-v">${label}</span>
+      <span class="nsb-d">${b[2]}</span>
+    </div>`;
+  }).join('');
+  d.innerHTML = `
+    <div class="lh">💡 NSB（夜空の暗さ）<span class="lh-sub">mag / arcsec²</span></div>
+    <div class="nsb-grid">${rows}</div>
+    <div class="lf">数値が大きいほど暗く星が見えやすい / 参考: 環境省 NSB 等級・Falchi 2016</div>`;
   return d;
 };
 const cloudLegendCtl = L.control({position:'bottomleft'});
@@ -607,9 +689,18 @@ async function refresh(){
         <span class="lab">月/イベント</span>${bar(es)}<span class="val">${es}</span>
         <span class="lab">アクセス</span>${bar(as)}<span class="val">${as}</span>
       </div>
+      ${(() => {
+        const nsb = bortleToNSB(sp[3]);
+        const [nr,ng,nb] = nsbToColor(nsb);
+        return `<div class="pop-nsb" style="margin-top:6px;display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:5px 7px">
+          <span style="width:14px;height:14px;border-radius:3px;background:rgb(${nr},${ng},${nb});border:1px solid #94a3b8"></span>
+          <span style="font-size:12px;font-weight:700;color:#0f172a">NSB ${nsb.toFixed(1)}</span>
+          <span style="font-size:11px;color:#475569;line-height:1.25">${nsbToDesc(nsb)}</span>
+        </div>`;
+      })()}
       <div class="small" style="margin-top:6px;color:#475569">
         雲量 ${w.cloud}% / 湿度 ${w.humidity}% / 視程 ${(w.visibility/1000).toFixed(0)}km / 風 ${w.wind}m/s<br>
-        Bortle ${sp[3]} ・ 駐車場${sp[4]?"あり":"要確認"} ・ 距離 ${dist} (約${eta})
+        Bortle ${sp[3]} (NSB ${bortleToNSB(sp[3]).toFixed(1)}) ・ 駐車場${sp[4]?"あり":"要確認"} ・ 距離 ${dist} (約${eta})
       </div>
       <div style="margin-top:6px"><a href="${gmaps}" target="_blank">Google マップで経路を開く →</a></div>
     `;
@@ -676,7 +767,7 @@ function nearItemHtml(it, dist){
       <div class="near-badge" style="background:${colorFor(it.total)}">${it.total}</div>
       <div>
         <div class="near-name">${sp[0]}</div>
-        <div class="near-meta">天候 ${it.ws} ・ 光害 ${it.ls} ・ Bortle ${sp[3]} ${sp[4]?'・ 🅿︎':''}</div>
+        <div class="near-meta">天候 ${it.ws} ・ NSB ${bortleToNSB(sp[3]).toFixed(1)} (Bortle ${sp[3]}) ${sp[4]?'・ 🅿︎':''}</div>
       </div>
       <div class="near-dist">${distStr}</div>
     </div>`;
