@@ -285,7 +285,8 @@ const state = {
   when: roundToHour(new Date(Date.now() + 6*3600*1000)),
   weights: {w1:45, w2:30, w3:15, w4:10}, // 固定（前バージョンの重み調整UIは廃止）
   user: null, // {lat,lon}
-  cache: new Map(), // weather cache
+  cache: new Map(), // weather cache (single-spot)
+  batchCache: null,  // {key, data[]} batch weather cache
   markers: new Map(), // spotIdx -> leaflet marker
 };
 
@@ -349,37 +350,81 @@ function eventScore(d){
 }
 
 // ---------- Weather (Open-Meteo) ----------
+const WEATHER_FALLBACK = {cloud:50,cloudLow:30,cloudMid:20,cloudHigh:30,humidity:70,visibility:20000,temp:15,wind:3,_err:true};
+
+async function fetchWithRetry(url, retries=3){
+  for(let i=0; i<retries; i++){
+    const r = await fetch(url);
+    if(r.status === 429){
+      if(i < retries-1) await new Promise(res => setTimeout(res, 800*(i+1)));
+      continue;
+    }
+    return r;
+  }
+  throw new Error('429');
+}
+
+function parseWeatherHour(loc, when){
+  const hr = when.toISOString().slice(0,13);
+  const idx = loc.hourly.time.findIndex(t => t.startsWith(hr));
+  const i = idx >= 0 ? idx : loc.hourly.time.length-1;
+  return {
+    cloud:     loc.hourly.cloud_cover[i],
+    cloudLow:  loc.hourly.cloud_cover_low[i],
+    cloudMid:  loc.hourly.cloud_cover_mid[i],
+    cloudHigh: loc.hourly.cloud_cover_high[i],
+    humidity:  loc.hourly.relative_humidity_2m[i],
+    visibility:loc.hourly.visibility[i],
+    temp:      loc.hourly.temperature_2m[i],
+    wind:      loc.hourly.wind_speed_10m[i],
+  };
+}
+
+// 全スポットを1リクエストで取得（429対策）
+async function fetchWeatherBatch(spots, when){
+  const dateStr = when.toISOString().slice(0,10);
+  const bKey = `${dateStr},${when.getHours()}`;
+  if(state.batchCache && state.batchCache.key === bKey) return state.batchCache.data;
+
+  const lats = spots.map(sp => sp[1].toFixed(4)).join(',');
+  const lons  = spots.map(sp => sp[2].toFixed(4)).join(',');
+  const params = new URLSearchParams({
+    latitude: lats, longitude: lons,
+    hourly: "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,wind_speed_10m",
+    timezone: "Asia/Tokyo",
+    start_date: dateStr, end_date: dateStr,
+  });
+  try{
+    const r = await fetchWithRetry(`https://api.open-meteo.com/v1/forecast?${params}`);
+    const j = await r.json();
+    const arr = Array.isArray(j) ? j : [j];
+    const data = arr.map(loc => parseWeatherHour(loc, when));
+    state.batchCache = {key: bKey, data};
+    return data;
+  }catch(e){
+    return spots.map(() => ({...WEATHER_FALLBACK}));
+  }
+}
+
+// 単一地点（現在地・地図中心など）
 async function fetchWeather(lat, lon, when){
   const key = `${lat.toFixed(2)},${lon.toFixed(2)},${when.toISOString().slice(0,13)}`;
   if(state.cache.has(key)) return state.cache.get(key);
-  const start = new Date(when); start.setHours(start.getHours()-1);
-  const end = new Date(when); end.setHours(end.getHours()+2);
+  const dateStr = when.toISOString().slice(0,10);
   const params = new URLSearchParams({
     latitude:lat, longitude:lon,
     hourly:"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,wind_speed_10m",
     timezone:"Asia/Tokyo",
-    start_date: when.toISOString().slice(0,10),
-    end_date: when.toISOString().slice(0,10),
+    start_date: dateStr, end_date: dateStr,
   });
   try{
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    const r = await fetchWithRetry(`https://api.open-meteo.com/v1/forecast?${params}`);
     const j = await r.json();
-    const idx = j.hourly.time.findIndex(t=>t.startsWith(when.toISOString().slice(0,13)));
-    const i = idx>=0 ? idx : j.hourly.time.length-1;
-    const data = {
-      cloud: j.hourly.cloud_cover[i],
-      cloudLow: j.hourly.cloud_cover_low[i],
-      cloudMid: j.hourly.cloud_cover_mid[i],
-      cloudHigh: j.hourly.cloud_cover_high[i],
-      humidity: j.hourly.relative_humidity_2m[i],
-      visibility: j.hourly.visibility[i],
-      temp: j.hourly.temperature_2m[i],
-      wind: j.hourly.wind_speed_10m[i],
-    };
-    state.cache.set(key,data);
+    const data = parseWeatherHour(j, when);
+    state.cache.set(key, data);
     return data;
   }catch(e){
-    return {cloud:50,cloudLow:30,cloudMid:20,cloudHigh:30,humidity:70,visibility:20000,temp:15,wind:3,_err:true};
+    return {...WEATHER_FALLBACK};
   }
 }
 function weatherScore(w){
@@ -407,7 +452,7 @@ function colorFor(s){
 function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
 // ---------- Map ----------
-const map = L.map('map',{zoomControl:true}).setView([36.4,138.5], 6);
+const map = L.map('map',{zoomControl:true, keyboard:false}).setView([36.4,138.5], 6);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'&copy; OpenStreetMap', maxZoom:18
 }).addTo(map);
@@ -502,7 +547,7 @@ async function buildCloudOverlay(){
       start_date: state.when.toISOString().slice(0,10),
       end_date: state.when.toISOString().slice(0,10),
     });
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    const r = await fetchWithRetry(`https://api.open-meteo.com/v1/forecast?${params}`);
     if(myToken !== cloudFetchToken) return; // 古いリクエスト破棄
     const j = await r.json();
     const arr = Array.isArray(j) ? j : [j];
@@ -581,13 +626,14 @@ async function refresh(){
   // (1) 基準地点（現在地 or マップ中心）の簡易気象
   renderLocalWeather();
 
-  // (2) 全スポットのスコア計算
-  const items = await Promise.all(SPOTS.map(async (sp, idx) => {
-    const w = await fetchWeather(sp[1], sp[2], state.when);
+  // (2) 全スポットのスコア計算（バッチリクエストで1回のAPIコールに集約）
+  const weatherResults = await fetchWeatherBatch(SPOTS, state.when);
+  const items = SPOTS.map((sp, idx) => {
+    const w = weatherResults[idx] ?? {...WEATHER_FALLBACK};
     const ws = weatherScore(w), ls = lpScore(sp[3]), es = ev.score, as = accessScore(sp);
     const total = totalScore(ws, ls, es, as);
     return {idx, sp, w, ws, ls, es, as, total};
-  }));
+  });
 
   items.sort((a,b)=>b.total-a.total);
   items.forEach(({idx,sp,w,ws,ls,es,as,total},i)=>{
@@ -749,6 +795,7 @@ function setWhen(d){
   state.when = roundToHour(d);
   updateClockUI(state.when);
   state.cache.clear();
+  state.batchCache = null;
   refresh();
 }
 
