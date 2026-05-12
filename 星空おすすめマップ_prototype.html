@@ -193,10 +193,10 @@
       <h2>マップレイヤー</h2>
       <label class="toggle">
         <input type="checkbox" id="lyrLP">
-        <span class="tswatch" style="background:linear-gradient(90deg,#000 0%,#0a3d62 25%,#d97706 70%,#dc2626 100%)"></span>
+        <span class="tswatch" style="background:linear-gradient(90deg,#050518 0%,#1a3a8f 25%,#f9c74f 60%,#d62828 80%,#ffffff 100%)"></span>
         <span class="tx">
-          <div class="ttitle">光害（ライトポリューション）</div>
-          <div class="tdesc">主要都市の人工光ドームを赤〜橙〜青で重畳。Bortle 推定の参考に。</div>
+          <div class="ttitle">光害（推定値）</div>
+          <div class="tdesc">NSB推定ラスター。Falchi 2016 公式11段階カラー。33都市モデルによる近似値で衛星実測ではありません。</div>
         </span>
       </label>
       <label class="toggle">
@@ -237,7 +237,7 @@
         将来拡張：OSM の <code>tourism=viewpoint</code> や自治体オープンデータ、ユーザー投稿で全国数千地点に拡張予定。
       </div>
       <div class="footer">
-        天気: Open-Meteo / 地図: OpenStreetMap / 月齢: クライアント計算 / 光害: スポット別の事前推定値<br>
+        天気: Open-Meteo / 地図: OpenStreetMap / 月齢: クライアント計算 / 光害: NSB推定ラスター（Falchi 2016モデル参考、33都市近似）<br>
         本ツールはプロトタイプ。観測地の夜間立入可否は現地の最新情報を必ずご確認ください。
       </div>
     </div>
@@ -457,9 +457,8 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'&copy; OpenStreetMap', maxZoom:18
 }).addTo(map);
 
-// ---------- 光害オーバーレイ（合成） ----------
-// 主要都市の人工光ドームを概算。population を Bortle 推定に変換。
-// data: [name, lat, lon, populationK, radiusKm]
+// ---------- 光害オーバーレイ（NSB推定ラスター - Falchi 2016準拠） ----------
+// data: [name, lat, lon, populationK, radiusKm(参考値)]
 const CITY_LIGHTS = [
   ["東京",     35.6895, 139.6917, 13960, 80],
   ["横浜",     35.4437, 139.6380,  3770, 35],
@@ -495,30 +494,120 @@ const CITY_LIGHTS = [
   ["山形",     38.2404, 140.3636,   240, 12],
   ["福島",     37.7503, 140.4676,   280, 14],
 ];
-const lpLayer = L.layerGroup();
-function buildLightPollution(){
-  lpLayer.clearLayers();
-  // 暗い背景の薄ベール（夜空の暗さを演出）
-  const bounds = [[20,120],[50,150]];
-  L.rectangle(bounds, {stroke:false, fillColor:'#000020', fillOpacity:0.18, interactive:false}).addTo(lpLayer);
-  for (const [name,lat,lon,pop,rKm] of CITY_LIGHTS){
-    // 中心(Bortle 8〜9)→外周(Bortle 4)へ多段リングで放射状ぼかし
-    const steps = 6;
-    for (let s=steps; s>=1; s--){
-      const f = s/steps;             // 1.0(外)→1/steps(中心)
-      const r = rKm*1000 * f;
-      // 色: 中心ほど赤・橙、外周は青みがかる
-      const inner = 1 - f;
-      const color = inner > 0.7 ? '#dc2626' :
-                    inner > 0.5 ? '#f97316' :
-                    inner > 0.3 ? '#fbbf24' :
-                    inner > 0.15? '#65a30d' : '#0a3d62';
-      const op = (1-f) * 0.18 * Math.min(1, pop/4000+0.3);
-      L.circle([lat,lon], {radius:r, color:'transparent', fillColor:color, fillOpacity:op, interactive:false}).addTo(lpLayer);
-    }
-  }
+
+// k: 輝度係数（Falchiアンカー値で校正: 東京中心NSB≈18, 北海道陸別NSB≈21.8）
+const LP_K = 4.5;
+
+// 都市規模別の市街核半径 (km)
+function cityR0(popK){
+  if(popK > 5000) return 50;
+  if(popK > 2000) return 35;
+  if(popK > 500)  return 20;
+  if(popK > 100)  return 10;
+  return 5;
 }
-buildLightPollution();
+
+// NSB (mag/arcsec²) = 22 - 2.5×log10(1 + Σ[pop×k/(d²+r0²)])
+// 0.15 は小規模集落・工業地帯の散乱バックグラウンド
+function computeNSB(lat, lon){
+  let sum = 0.15;
+  for(const [, clat, clon, pop] of CITY_LIGHTS){
+    const dlat = (lat - clat) * 111;
+    const dlon = (lon - clon) * 111 * Math.cos(clat * Math.PI / 180);
+    const d2 = dlat*dlat + dlon*dlon;
+    const r0 = cityR0(pop);
+    sum += pop * LP_K / (d2 + r0*r0);
+  }
+  return 22 - 2.5 * Math.log10(1 + sum);
+}
+
+// Falchi 2016 公式11バンド [NSB閾値, [R,G,B]]
+// NSB 22.0 は純黒でなく濃紺 → opacity 0.5でも地図ラベルが透けて見える
+const FALCHI_BANDS = [
+  [22.0, [  5,  5, 24]],
+  [21.5, [ 10, 21, 69]],
+  [21.25,[ 26, 58,143]],
+  [21.0, [  0,180,216]],
+  [20.75,[ 45,106, 79]],
+  [20.5, [ 82,183,136]],
+  [20.0, [249,199, 79]],
+  [19.5, [247,127,  0]],
+  [19.0, [214, 40, 40]],
+  [18.0, [199,125,255]],
+  [  0,  [255,255,255]],
+];
+
+function nsbToRGB(nsb){
+  for(const [t, rgb] of FALCHI_BANDS) if(nsb >= t) return rgb;
+  return FALCHI_BANDS[FALCHI_BANDS.length-1][1];
+}
+
+function nsbAlpha(nsb){
+  if(nsb >= 22.0) return 20;
+  if(nsb >= 21.5) return 35;
+  if(nsb >= 21.0) return 60;
+  if(nsb >= 20.5) return 90;
+  if(nsb >= 20.0) return 120;
+  if(nsb >= 19.0) return 150;
+  if(nsb >= 18.0) return 170;
+  return 190;
+}
+
+// Canvasラスターレイヤー（低解像度NSBグリッドをスムーズ拡大描画）
+// メインスレッドブロック対策: 300ms デバウンス + 200×150の低解像度計算
+const LPCanvasLayer = L.Layer.extend({
+  onAdd(map){
+    this._map = map;
+    const c = document.createElement('canvas');
+    c.style.cssText = 'position:absolute;pointer-events:none;';
+    this._canvas = c;
+    map.getPanes().overlayPane.appendChild(c);
+    map.on('viewreset zoomend moveend', this._scheduleRedraw, this);
+    this._redraw();
+  },
+  onRemove(map){
+    this._canvas.remove();
+    map.off('viewreset zoomend moveend', this._scheduleRedraw, this);
+    clearTimeout(this._timer);
+  },
+  _scheduleRedraw(){
+    clearTimeout(this._timer);
+    this._timer = setTimeout(() => this._redraw(), 300);
+  },
+  _redraw(){
+    const map = this._map;
+    if(!map) return;
+    const canvas = this._canvas;
+    const size = map.getSize();
+    canvas.width = size.x;
+    canvas.height = size.y;
+    L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]));
+    // 低解像度グリッドで NSB 計算 → 拡大してスムーズに見せる
+    const W = 200, H = 150;
+    const off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    const octx = off.getContext('2d');
+    const img = octx.createImageData(W, H);
+    const data = img.data;
+    for(let py = 0; py < H; py++){
+      for(let px = 0; px < W; px++){
+        const ll = map.containerPointToLatLng([px / W * size.x, py / H * size.y]);
+        const nsb = computeNSB(ll.lat, ll.lng);
+        const [r,g,b] = nsbToRGB(nsb);
+        const a = nsbAlpha(nsb);
+        const i = (py * W + px) * 4;
+        data[i] = r; data[i+1] = g; data[i+2] = b; data[i+3] = a;
+      }
+    }
+    octx.putImageData(img, 0, 0);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  }
+});
+
+const lpLayer = new LPCanvasLayer();
 
 // ---------- 雲量オーバーレイ（Open-Meteo グリッド） ----------
 const cloudLayer = L.layerGroup();
@@ -578,11 +667,17 @@ async function buildCloudOverlay(){
 const lpLegend = L.control({position:'bottomleft'});
 lpLegend.onAdd = function(){
   const d = L.DomUtil.create('div','map-legend');
-  d.innerHTML = `<div class="lh">💡 光害の強さ</div>
-    <div class="grad"><span style="font-size:10px">弱</span>
-    <div class="gbar" style="background:linear-gradient(90deg,transparent,#0a3d62,#65a30d,#fbbf24,#f97316,#dc2626)"></div>
-    <span style="font-size:10px">強</span></div>
-    <div style="font-size:10px;color:#9aa6c7;margin-top:2px">主要都市の人工光ドーム概算</div>`;
+  d.innerHTML = `<div class="lh">💡 光害強度（NSB推定）</div>
+    <div style="display:grid;grid-template-columns:14px 1fr;gap:2px 6px;font-size:10px;margin-top:4px;align-items:center">
+      <div style="background:#050518;border:1px solid #555;border-radius:2px;height:10px"></div><span>≥22.0 自然の暗夜</span>
+      <div style="background:#1a3a8f;border-radius:2px;height:10px"></div><span>21.25+ 暗い田舎</span>
+      <div style="background:#00b4d8;border-radius:2px;height:10px"></div><span>21.0+ 田舎の空</span>
+      <div style="background:#f9c74f;border-radius:2px;height:10px"></div><span>20.0+ 郊外</span>
+      <div style="background:#d62828;border-radius:2px;height:10px"></div><span>19.0+ 市街地</span>
+      <div style="background:#c77dff;border-radius:2px;height:10px"></div><span>18.0+ 都市</span>
+      <div style="background:#fff;border:1px solid #555;border-radius:2px;height:10px"></div><span>&lt;18 都市中心</span>
+    </div>
+    <div style="font-size:9px;color:#9aa6c7;margin-top:4px">⚠ 33都市モデルの推定値（衛星実測非）</div>`;
   return d;
 };
 const cloudLegendCtl = L.control({position:'bottomleft'});
