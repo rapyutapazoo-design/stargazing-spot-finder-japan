@@ -68,6 +68,26 @@
   ul.crit li{margin-bottom:2px}
   code{background:#0a1734;padding:1px 4px;border-radius:3px;font-size:10.5px;color:var(--accent)}
 
+  /* 時刻ピッカー */
+  .time-pad{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .clk{width:84px;height:84px;flex:0 0 84px;cursor:ns-resize;user-select:none;-webkit-user-select:none}
+  .clk:active{filter:brightness(1.15)}
+  .time-text{flex:1;text-align:center;line-height:1.15;cursor:ns-resize;user-select:none;-webkit-user-select:none;padding:4px;border-radius:6px}
+  .time-text:hover{background:#13234a}
+  .time-text:focus{outline:1px solid var(--accent)}
+  .t-date{font-size:14px;color:var(--text);font-weight:600;letter-spacing:.02em}
+  .t-day{font-size:11px;color:var(--muted);margin-left:2px}
+  .t-time{font-size:30px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;margin:2px 0;letter-spacing:.02em}
+  .t-rel{color:var(--muted)}
+  .step-row{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:6px}
+  .step{background:#152545;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 0;font-size:12px;cursor:pointer;font-weight:600;transition:.15s}
+  .step:hover{background:#1d3360;border-color:var(--accent);transform:translateY(-1px)}
+  .step:active{transform:translateY(0)}
+  .preset-row{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:6px}
+  .preset{background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:5px 0;font-size:11px;cursor:pointer;font-weight:600}
+  .preset:hover{background:#13234a}
+  .hidden-when{position:absolute;left:-9999px;top:-9999px;width:0;height:0;opacity:0}
+
   /* レイヤートグル */
   .toggle{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#0a1734;border:1px solid var(--line);margin-bottom:6px;cursor:pointer;user-select:none}
   .toggle:hover{background:#13234a}
@@ -94,11 +114,40 @@
 
     <div class="card">
       <h2>観測時刻</h2>
-      <input id="when" type="datetime-local">
-      <div class="row" style="margin-top:6px">
-        <button id="btn-tonight" class="ghost">今夜21時</button>
-        <button id="btn-weekend" class="ghost">次の土曜21時</button>
+      <div class="time-pad">
+        <svg class="clk" viewBox="0 0 100 100" id="clkSvg" aria-label="アナログ時計">
+          <defs>
+            <radialGradient id="clkBg" cx="50%" cy="40%" r="60%">
+              <stop offset="0%" stop-color="#1a3a6e"/>
+              <stop offset="100%" stop-color="#0a1428"/>
+            </radialGradient>
+          </defs>
+          <circle cx="50" cy="50" r="46" fill="url(#clkBg)" stroke="#2e5984" stroke-width="2"/>
+          <g id="clkTicks"></g>
+          <g id="clkNumbers"></g>
+          <line id="hourHand" x1="50" y1="50" x2="50" y2="28" stroke="#fbbf24" stroke-width="3.5" stroke-linecap="round" transform-origin="50 50"/>
+          <line id="minHand"  x1="50" y1="50" x2="50" y2="18" stroke="#e6ecff" stroke-width="2"   stroke-linecap="round" transform-origin="50 50"/>
+          <circle cx="50" cy="50" r="2.5" fill="#7fb3ff"/>
+        </svg>
+        <div class="time-text" id="timeText" tabindex="0">
+          <div class="t-date"><span id="tDate">--/--</span> <span id="tDay" class="t-day">(-)</span></div>
+          <div class="t-time" id="tTime">--:--</div>
+          <div class="t-rel small" id="tRel">—</div>
+        </div>
       </div>
+      <div class="step-row">
+        <button class="step" data-d="-1" title="1日前">−1日</button>
+        <button class="step" data-h="-1" title="1時間前">−1時</button>
+        <button class="step" data-h="1"  title="1時間後">+1時</button>
+        <button class="step" data-d="1"  title="1日後">+1日</button>
+      </div>
+      <div class="preset-row">
+        <button class="preset" id="btn-tonight">今夜21時</button>
+        <button class="preset" id="btn-tomorrow">明日21時</button>
+        <button class="preset" id="btn-weekend">今週末21時</button>
+      </div>
+      <div class="small" style="color:var(--muted);margin-top:6px">時計やテキストを<b>マウスホイール</b>で回す → ±1時間 移動。テキストをクリックで時刻直接編集も可。</div>
+      <input id="whenInput" type="datetime-local" class="hidden-when">
       <div id="locWeather" class="loc-weather">
         <div class="loc-where small">基準地点を取得中…</div>
         <div class="loc-grid" id="locGrid">
@@ -633,19 +682,138 @@ function nearItemHtml(it, dist){
     </div>`;
 }
 
-// ---------- UI bindings ----------
-const wel = document.getElementById('when');
-wel.value = fmtLocal(state.when);
-wel.addEventListener('change', e=>{ state.when = roundToHour(new Date(e.target.value)); state.cache.clear(); refresh(); });
-document.getElementById('btn-tonight').onclick = ()=>{
+// ---------- UI bindings: 時刻ピッカー ----------
+const wel = document.getElementById('whenInput'); // 隠し input（直接編集用）
+const DAYS = ['日','月','火','水','木','金','土'];
+
+// 時計の目盛りと数字を初期化
+(function initClockFace(){
+  const ticks = document.getElementById('clkTicks');
+  const nums  = document.getElementById('clkNumbers');
+  for(let i=0;i<12;i++){
+    const a = i*30 - 90;
+    const x1 = 50 + Math.cos(a*Math.PI/180)*42;
+    const y1 = 50 + Math.sin(a*Math.PI/180)*42;
+    const x2 = 50 + Math.cos(a*Math.PI/180)*46;
+    const y2 = 50 + Math.sin(a*Math.PI/180)*46;
+    const ln = document.createElementNS('http://www.w3.org/2000/svg','line');
+    ln.setAttribute('x1',x1); ln.setAttribute('y1',y1);
+    ln.setAttribute('x2',x2); ln.setAttribute('y2',y2);
+    ln.setAttribute('stroke', i%3===0 ? '#7fb3ff' : '#2e5984');
+    ln.setAttribute('stroke-width', i%3===0 ? 1.6 : 1);
+    ticks.appendChild(ln);
+    if(i%3===0){
+      const tx = document.createElementNS('http://www.w3.org/2000/svg','text');
+      tx.setAttribute('x', 50 + Math.cos(a*Math.PI/180)*36);
+      tx.setAttribute('y', 50 + Math.sin(a*Math.PI/180)*36 + 2.8);
+      tx.setAttribute('text-anchor','middle');
+      tx.setAttribute('fill','#9aa6c7');
+      tx.setAttribute('font-size','7');
+      tx.setAttribute('font-weight','600');
+      tx.textContent = i===0 ? '12' : String(i);
+      nums.appendChild(tx);
+    }
+  }
+})();
+
+function relTimeText(d){
+  const diffMs = d.getTime() - Date.now();
+  const sign = diffMs < 0 ? '前' : '後';
+  const a = Math.abs(diffMs)/1000;
+  if(a < 60) return 'まもなく';
+  if(a < 3600) return `${Math.round(a/60)}分${sign}`;
+  if(a < 86400) return `${Math.round(a/3600)}時間${sign}`;
+  return `${Math.round(a/86400)}日${sign}`;
+}
+
+function updateClockUI(d){
+  // 針の角度（24時間制で hour%12）
+  const h = d.getHours()%12;
+  const m = d.getMinutes();
+  const hourAng = (h + m/60)*30;
+  const minAng  = m*6;
+  document.getElementById('hourHand').setAttribute('transform', `rotate(${hourAng} 50 50)`);
+  document.getElementById('minHand').setAttribute('transform',  `rotate(${minAng} 50 50)`);
+  // テキスト
+  document.getElementById('tDate').textContent =
+    `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
+  document.getElementById('tDay').textContent  = `(${DAYS[d.getDay()]})`;
+  document.getElementById('tTime').textContent =
+    `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  document.getElementById('tRel').textContent  = relTimeText(d);
+  // 隠し input（直接編集に使う）
+  wel.value = fmtLocal(d);
+}
+
+function setWhen(d){
+  state.when = roundToHour(d);
+  updateClockUI(state.when);
+  state.cache.clear();
+  refresh();
+}
+
+// ±1時間 / ±1日 ボタン
+document.querySelectorAll('.step').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const d = new Date(state.when);
+    if(btn.dataset.h) d.setHours(d.getHours() + Number(btn.dataset.h));
+    if(btn.dataset.d) d.setDate(d.getDate()  + Number(btn.dataset.d));
+    setWhen(d);
+  });
+});
+
+// マウスホイール: 上スクロール=時間進む / 下スクロール=戻る（蓄積方式で誤連打防止）
+let _wheelAcc = 0;
+const _wheelStep = 30; // 30px ぶん回したら ±1h
+['clkSvg','timeText'].forEach(id => {
+  document.getElementById(id).addEventListener('wheel', e => {
+    e.preventDefault();
+    _wheelAcc += e.deltaY;
+    while(Math.abs(_wheelAcc) >= _wheelStep){
+      const dir = _wheelAcc < 0 ? 1 : -1; // 上スクロール=未来方向
+      _wheelAcc += dir * _wheelStep;       // 蓄積を 0 に近づける
+      const d = new Date(state.when);
+      d.setHours(d.getHours() + dir);
+      setWhen(d);
+    }
+  }, {passive:false});
+});
+
+// テキストをクリックすると隠し input を呼び出して直接編集
+document.getElementById('timeText').addEventListener('click', e => {
+  if(e.detail >= 2){ // ダブルクリックで編集
+    wel.style.position = 'fixed'; wel.style.left = '50%'; wel.style.top = '20%';
+    wel.style.opacity = '1'; wel.style.width = 'auto'; wel.style.height='auto';
+    wel.style.zIndex='10000'; wel.style.background='var(--panel)'; wel.style.color='var(--text)';
+    wel.style.padding='8px';
+    wel.focus(); try{ wel.showPicker && wel.showPicker(); }catch(_){}
+  }
+});
+wel.addEventListener('change', e => {
+  if(e.target.value) setWhen(new Date(e.target.value));
+  wel.style.position='absolute'; wel.style.left='-9999px'; wel.style.opacity='0';
+});
+wel.addEventListener('blur', () => {
+  wel.style.position='absolute'; wel.style.left='-9999px'; wel.style.opacity='0';
+});
+
+// プリセット
+document.getElementById('btn-tonight').onclick = () => {
   const d=new Date(); d.setHours(21,0,0,0); if(d<new Date()) d.setDate(d.getDate()+1);
-  state.when=d; wel.value=fmtLocal(d); state.cache.clear(); refresh();
+  setWhen(d);
 };
-document.getElementById('btn-weekend').onclick = ()=>{
+document.getElementById('btn-tomorrow').onclick = () => {
+  const d=new Date(); d.setDate(d.getDate()+1); d.setHours(21,0,0,0);
+  setWhen(d);
+};
+document.getElementById('btn-weekend').onclick = () => {
   const d=new Date(); const day=d.getDay(); const add=(6-day+7)%7||7;
   d.setDate(d.getDate()+add); d.setHours(21,0,0,0);
-  state.when=d; wel.value=fmtLocal(d); state.cache.clear(); refresh();
+  setWhen(d);
 };
+
+// 初期描画
+updateClockUI(state.when);
 document.getElementById('geo').onclick = ()=>{
   if(!navigator.geolocation){ alert('Geolocation 非対応'); return; }
   navigator.geolocation.getCurrentPosition(pos=>{
