@@ -107,6 +107,26 @@
   .map-legend .gbar{width:90px;height:8px;border-radius:4px}
   .map-legend .lf{font-size:9.5px;color:#9aa6c7;margin-top:6px;line-height:1.4}
 
+  /* 指数解説カード */
+  .g-item{background:#0a1734;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:background .15s}
+  .g-item[open]{background:#13234a;border-color:#2e4a7a}
+  .g-item summary{cursor:pointer;padding:8px 10px;font-size:12px;font-weight:600;color:var(--text);list-style:none;display:flex;align-items:center;gap:8px;user-select:none}
+  .g-item summary::-webkit-details-marker{display:none}
+  .g-item summary::after{content:"▸";margin-left:auto;color:var(--muted);font-size:11px;transition:transform .15s}
+  .g-item[open] summary::after{transform:rotate(90deg);color:var(--accent)}
+  .g-item summary:hover{background:#13234a}
+  .g-num{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#0a1428;font-size:11px;font-weight:800;align-items:center;justify-content:center;flex:0 0 18px}
+  .g-body{padding:8px 12px 12px;font-size:11.5px;color:#cbd5e1;line-height:1.6;border-top:1px dashed var(--line)}
+  .g-body p{margin:6px 0}
+  .g-formula{background:#0a1428;border:1px solid var(--line);border-radius:4px;padding:6px 8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--accent);margin:6px 0;overflow-x:auto;white-space:nowrap}
+  .g-list{margin:6px 0;padding-left:14px;line-height:1.55}
+  .g-list li{margin-bottom:3px;font-size:11px}
+  .g-list.g-nsb li{display:flex;align-items:center;gap:6px;padding-left:0;list-style:none}
+  .g-list.g-nsb{padding-left:0}
+  .g-sw{display:inline-block;width:14px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);flex:0 0 14px}
+  .g-tip{background:rgba(127,179,255,.08);border-left:2px solid var(--accent);padding:5px 8px;border-radius:0 4px 4px 0;font-size:11px;color:#e6ecff;margin:6px 0}
+  .g-foot{font-size:10px;color:var(--muted);margin-top:6px !important;font-style:italic}
+
   /* NSB 凡例 */
   .nsb-legend{max-width:280px}
   .nsb-grid{display:grid;grid-template-columns:14px 56px 1fr;gap:4px 6px;align-items:center;margin-top:4px}
@@ -228,6 +248,102 @@
         <span class="chip"><i style="background:var(--warn)"></i>35–50 厳しい</span>
         <span class="chip"><i style="background:var(--bad)"></i>~35 不向き</span>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>📖 指数・用語の解説</h2>
+      <div class="small" style="color:var(--muted);margin-bottom:6px;line-height:1.5">
+        タイトルをクリックすると詳細が開きます。
+      </div>
+
+      <details class="g-item">
+        <summary><span class="g-num">①</span> 総合スコア (0〜100)</summary>
+        <div class="g-body">
+          <div class="g-formula">S = 0.45·天候 + 0.30·光害 + 0.15·月/イベント + 0.10·アクセス</div>
+          <p>4 指標の加重和で「今行くべき度」を表します。80 以上で観測条件最高、65〜80 で十分、50 未満は別の日/場所を検討。撮影者は光害重視、家族連れはアクセス重視など、用途で重み付けの意味合いが変わります。</p>
+        </div>
+      </details>
+
+      <details class="g-item">
+        <summary><span class="g-num">②</span> 天候スコア</summary>
+        <div class="g-body">
+          <p>雲量・湿度・視程から算出。とくに <b>低層雲（〜2 km）</b> を 2 倍重みで評価します。高層の絹雲より下層のもくもく雲のほうが視界を遮るためです。湿度 70% 超は結露ペナルティ、視程 10 km 超は加点。</p>
+          <ul class="g-list">
+            <li><b>低層雲</b>：星見の大敵。これが多いと諦めるべき</li>
+            <li><b>中層雲（2〜6 km）</b>：透けて見えるが暗くなる</li>
+            <li><b>高層雲（6 km〜）</b>：絹雲。淡い天体には影響大、明るい星はOK</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="g-item">
+        <summary><span class="g-num">③</span> NSB (Night Sky Brightness)</summary>
+        <div class="g-body">
+          <p>夜空の単位面積あたりの明るさを「等級」で表した値。単位は <code>mag/arcsec²</code>。<b>数値が大きいほど暗く</b>、星が見えやすくなります（等級は数が大きいほど暗い、という天文の慣習に従う）。1 等級差で約 2.5 倍の明るさ差です。</p>
+          <ul class="g-list g-nsb">
+            <li><span class="g-sw" style="background:rgb(12,8,40)"></span> <b>22.0+</b>：天の川の構造まで見える（離島・高山）</li>
+            <li><span class="g-sw" style="background:rgb(25,28,90)"></span> <b>21.5〜22</b>：山岳・海岸の暗さ、天の川がよく見える</li>
+            <li><span class="g-sw" style="background:rgb(40,55,160)"></span> <b>21.0〜21.5</b>：郊外、天の川が見え始める</li>
+            <li><span class="g-sw" style="background:rgb(60,195,110)"></span> <b>19.5〜20.5</b>：住宅地、星座の形が分かる</li>
+            <li><span class="g-sw" style="background:rgb(225,220,40)"></span> <b>19〜19.5</b>：市街地、明るい星のみ</li>
+            <li><span class="g-sw" style="background:rgb(225,50,50)"></span> <b>18〜19</b>：大都市部、星はほぼ見えない</li>
+          </ul>
+          <p class="g-foot">出典：Falchi et al. 2016 / 環境省 NSB 等級</p>
+        </div>
+      </details>
+
+      <details class="g-item">
+        <summary><span class="g-num">④</span> Bortle スケール</summary>
+        <div class="g-body">
+          <p>肉眼での星の見え方を <b>1〜9</b> 段階で表した分類（米国の天文家 John E. Bortle が 2001 年に提案）。観測地選びの定番指標。</p>
+          <ul class="g-list">
+            <li><b>1</b>：完全な暗黒（天の川が地面に影を落とす）</li>
+            <li><b>2〜3</b>：日本のダークスカイ地（井原市美星町・与論島など）</li>
+            <li><b>4</b>：田舎〜郊外境界</li>
+            <li><b>5〜6</b>：郊外〜住宅地</li>
+            <li><b>7〜8</b>：市街地〜大都市</li>
+            <li><b>9</b>：都心部</li>
+          </ul>
+          <p>本ツールでは <b>Bortle 1→NSB 22.0 / 5→20.6 / 9→17.5</b> で変換しています。光害スコアは Bortle 1 = 100 点、9 = 0 点の線形マップ。</p>
+        </div>
+      </details>
+
+      <details class="g-item">
+        <summary><span class="g-num">⑤</span> 月齢・天体イベントスコア</summary>
+        <div class="g-body">
+          <p><b>月齢</b>（新月からの経過日数 0〜29.5）が小さい/大きいほど夜空が暗くなります。新月期 (0 または 29.5 付近) で 100 点、満月 (約 14.77) で 20 点。</p>
+          <p>本ツールに登録された主要 8 流星群（しぶんぎ / こと / みずがめη / ペルセウス / オリオン / しし / ふたご / こぐま）の <b>極大日 ±3 日以内</b> なら最大 +15 点のボーナスを加算。</p>
+          <p class="g-tip">💡 観測のゴールデンタイムは新月前後 1 週間。満月期でも月の出/月の入りを避ければ観測可能。</p>
+        </div>
+      </details>
+
+      <details class="g-item">
+        <summary><span class="g-num">⑥</span> 光害スコア</summary>
+        <div class="g-body">
+          <p>スポット登録時の Bortle 推定値から算出。<b>その場所そのものの性質</b> なので時刻によらず一定です（街灯の状況など若干の変動はあり）。</p>
+          <p>Falchi 2016 の世界光害アトラス、環境省の星空継続観察データ、NASA VIIRS の夜間光衛星画像などをベースに推定しています。LED 化の進行で年々悪化傾向にあるため、参照データは新しいものを推奨。</p>
+        </div>
+      </details>
+
+      <details class="g-item">
+        <summary><span class="g-num">⑦</span> アクセス性スコア</summary>
+        <div class="g-body">
+          <div class="g-formula">A = 100 − min(d, 150)/1.5 − min(t, 180)/3 + (駐車場5)</div>
+          <p>現在地からの直線距離 <code>d</code> (km) と所要時間 <code>t</code> (分、50 km/h 換算) から減点。駐車場ありで +5。現在地未取得時は 90 点（満点扱い）。</p>
+          <p class="g-tip">💡 撮影機材を運ぶなら所要時間より <b>駐車場から徒歩 0 分</b> が効くため、駐車場ありフラグを優先するのが実用的。</p>
+        </div>
+      </details>
+
+      <details class="g-item">
+        <summary><span class="g-num">⑧</span> 視程・湿度・風</summary>
+        <div class="g-body">
+          <ul class="g-list">
+            <li><b>視程 (Visibility)</b>：水平方向に見通せる距離。大気のクリアさ指標。<b>10 km 超</b> なら星見に十分、<b>5 km 以下</b> は霞・PM2.5・黄砂など</li>
+            <li><b>湿度</b>：高いほどレンズ・鏡の <b>結露リスク</b>。70% 超で要対策（ヒーター、レンズフード等）</li>
+            <li><b>風速</b>：望遠鏡のブレ・三脚揺れに影響。3 m/s 超で長時間露光は困難</li>
+          </ul>
+        </div>
+      </details>
     </div>
 
     <div class="card">
