@@ -19,3 +19,7 @@ npm-debug.log*
 *.command
 *.log
 .upload_success.log
+
+# AI agent caches
+.claude/
+
