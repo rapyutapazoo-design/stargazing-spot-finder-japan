@@ -261,8 +261,8 @@
       <details class="g-item">
         <summary><span class="g-num">①</span> 総合スコア (0〜100)</summary>
         <div class="g-body">
-          <div class="g-formula">S = 0.45·天候 + 0.30·光害 + 0.15·月/イベント + 0.10·アクセス</div>
-          <p>4 指標の加重和で「今行くべき度」を表します。80 以上で観測条件最高、65〜80 で十分、50 未満は別の日/場所を検討。撮影者は光害重視、家族連れはアクセス重視など、用途で重み付けの意味合いが変わります。</p>
+          <div class="g-formula">S = 0.50·天候 + 0.35·光害 + 0.15·月/イベント</div>
+          <p>天候・光害・月/天体イベントの3指標の加重和で「今行くべき度」を表します。80 以上で観測条件最高、65〜80 で十分、50 未満は別の日/場所を検討。アクセス性（距離や駐車場など）はスコアには含めず、参考情報として表示します。</p>
         </div>
       </details>
 
@@ -328,11 +328,11 @@
       </details>
 
       <details class="g-item">
-        <summary><span class="g-num">⑦</span> アクセス性スコア</summary>
+        <summary><span class="g-num">⑦</span> アクセス性（参考情報）</summary>
         <div class="g-body">
-          <div class="g-formula">A = 100 − min(d, 150)/1.5 − min(t, 180)/3 + (駐車場5)</div>
-          <p>現在地からの直線距離 <code>d</code> (km) と所要時間 <code>t</code> (分、50 km/h 換算) から減点。駐車場ありで +5。現在地未取得時は 90 点（満点扱い）。</p>
-          <p class="g-tip">💡 撮影機材を運ぶなら所要時間より <b>駐車場から徒歩 0 分</b> が効くため、駐車場ありフラグを優先するのが実用的。</p>
+          <div class="g-formula">現在地からの直線距離・所要時間（50 km/h 換算）および駐車場の有無を表示</div>
+          <p>本プロトタイプでは、アクセスのしやすさを<b>総合スコアの計算から除外</b>しています。観測地自体の自然条件でスコアを評価した上で、実際に行くかどうかの移動計画の参考にしてください。</p>
+          <p class="g-tip">💡 撮影機材を運ぶなら所要時間より <b>駐車場から徒歩 0 分（駐車場あり）</b> であるかどうかが実用上で重要です。</p>
         </div>
       </details>
 
@@ -410,7 +410,7 @@ const SHOWERS = [
 // ---------- State ----------
 const state = {
   when: roundToHour(new Date(Date.now() + 6*3600*1000)),
-  weights: {w1:45, w2:30, w3:15, w4:10}, // 固定（前バージョンの重み調整UIは廃止）
+  weights: {w1:50, w2:35, w3:15, w4:0}, // 固定（アクセススコアw4は除外）
   user: null, // {lat,lon}
   cache: new Map(), // weather cache
   markers: new Map(), // spotIdx -> leaflet marker
@@ -519,10 +519,10 @@ function weatherScore(w){
 }
 
 // ---------- Compute total ----------
-function totalScore(weather, lp, ev, ac){
+function totalScore(weather, lp, ev){
   const w = state.weights;
-  const sum = w.w1+w.w2+w.w3+w.w4 || 1;
-  return Math.round((w.w1*weather + w.w2*lp + w.w3*ev + w.w4*ac)/sum);
+  const sum = w.w1+w.w2+w.w3 || 1;
+  return Math.round((w.w1*weather + w.w2*lp + w.w3*ev)/sum);
 }
 function colorFor(s){
   if(s>=80) return getCss('--good');
@@ -785,7 +785,7 @@ async function refresh(){
   const items = await Promise.all(SPOTS.map(async (sp, idx) => {
     const w = await fetchWeather(sp[1], sp[2], state.when);
     const ws = weatherScore(w), ls = lpScore(sp[3]), es = ev.score, as = accessScore(sp);
-    const total = totalScore(ws, ls, es, as);
+    const total = totalScore(ws, ls, es);
     return {idx, sp, w, ws, ls, es, as, total};
   }));
 
@@ -805,7 +805,6 @@ async function refresh(){
         <span class="lab">天候</span>${bar(ws)}<span class="val">${ws}</span>
         <span class="lab">光害</span>${bar(ls)}<span class="val">${ls}</span>
         <span class="lab">月/イベント</span>${bar(es)}<span class="val">${es}</span>
-        <span class="lab">アクセス</span>${bar(as)}<span class="val">${as}</span>
       </div>
       ${(() => {
         const nsb = bortleToNSB(sp[3]);
