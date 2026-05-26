@@ -491,7 +491,7 @@ async function fetchWeather(lat, lon, when){
   try{
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
     const j = await r.json();
-    const idx = j.hourly.time.findIndex(t=>t.startsWith(when.toISOString().slice(0,13)));
+    const idx = j.hourly.time.findIndex(t=>t.startsWith(fmtLocal(when).slice(0,13)));
     const i = idx>=0 ? idx : j.hourly.time.length-1;
     const data = {
       cloud: j.hourly.cloud_cover[i],
@@ -697,7 +697,7 @@ async function buildCloudOverlay(){
     const j = await r.json();
     const arr = Array.isArray(j) ? j : [j];
     cloudLayer.clearLayers();
-    const targetHour = state.when.toISOString().slice(0,13);
+    const targetHour = fmtLocal(state.when).slice(0,13);
     arr.forEach((loc, idx) => {
       if(!loc.hourly) return;
       const hi = loc.hourly.time.findIndex(t => t.startsWith(targetHour));
