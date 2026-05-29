@@ -135,6 +135,20 @@
   .nsb-c{width:14px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);box-shadow:0 0 0 1px rgba(0,0,0,.25) inset}
   .nsb-v{font-variant-numeric:tabular-nums;font-weight:600;font-size:10.5px;color:#e6ecff;white-space:nowrap}
   .nsb-d{font-size:10px;color:#cbd5e1;line-height:1.3}
+  /* 天候ウィジェット */
+  .weather-widget-card{display:none;flex-direction:column;gap:8px}
+  .ww-header{display:flex;justify-content:space-between;align-items:center}
+  .ww-current-score{font-size:18px;font-weight:800;color:var(--accent)}
+  .ww-chart-container{width:100%;height:80px;background:#0a1734;border:1px solid var(--line);border-radius:6px;position:relative}
+  .ww-chart-container svg{width:100%;height:100%}
+  .ww-daily-list{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+  .ww-daily-item{flex:0 0 64px;background:#0a1734;border:1px solid var(--line);border-radius:6px;padding:6px;text-align:center;display:flex;flex-direction:column;gap:2px;cursor:pointer;transition:background 0.15s, border-color 0.15s}
+  .ww-daily-item:hover{background:#13234a}
+  .ww-daily-item.active{border:2px solid var(--accent);background:#1d3360;padding:5px}
+  .ww-daily-item.active .ww-d-day{color:var(--text);font-weight:700}
+  .ww-d-day{font-size:10px;color:var(--muted)}
+  .ww-d-icon{font-size:16px}
+  .ww-d-score{font-size:12px;font-weight:700}
 </style>
 </head>
 <body>
@@ -190,6 +204,21 @@
           <div class="lw-item"><div class="lw-lab">星空</div><div class="lw-val" id="lwScore">—</div></div>
         </div>
       </div>
+    </div>
+
+    <div class="card weather-widget-card" id="weatherWidgetCard">
+      <div class="ww-header">
+        <h2 id="wwTitle" style="margin:0">今後の天候推移</h2>
+        <div class="ww-current-score" id="wwCurrentScore">--</div>
+      </div>
+      <div class="ww-chart-container">
+        <svg id="wwChart" viewBox="0 0 300 80" preserveAspectRatio="none">
+          <polyline id="wwPolyline" fill="none" stroke="var(--accent)" stroke-width="2"/>
+          <g id="wwLabels"></g>
+          <g id="wwPoints"></g>
+        </svg>
+      </div>
+      <div class="ww-daily-list" id="wwDailyList"></div>
     </div>
 
     <div class="card">
@@ -481,12 +510,13 @@ async function fetchWeather(lat, lon, when){
   if(state.cache.has(key)) return state.cache.get(key);
   const start = new Date(when); start.setHours(start.getHours()-1);
   const end = new Date(when); end.setHours(end.getHours()+2);
+  const endD = new Date(when); endD.setDate(endD.getDate() + 3);
   const params = new URLSearchParams({
     latitude:lat, longitude:lon,
     hourly:"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,wind_speed_10m",
     timezone:"Asia/Tokyo",
     start_date: when.toISOString().slice(0,10),
-    end_date: when.toISOString().slice(0,10),
+    end_date: endD.toISOString().slice(0,10),
   });
   try{
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
@@ -502,6 +532,7 @@ async function fetchWeather(lat, lon, when){
       visibility: j.hourly.visibility[i],
       temp: j.hourly.temperature_2m[i],
       wind: j.hourly.wind_speed_10m[i],
+      hourly: j.hourly
     };
     state.cache.set(key,data);
     return data;
@@ -781,6 +812,9 @@ async function refresh(){
   // (1) 基準地点（現在地 or マップ中心）の簡易気象
   renderLocalWeather();
 
+  // (1.5) 今後の天候推移ウィジェット
+  renderWeatherWidget();
+
   // (2) 全スポットのスコア計算
   const items = await Promise.all(SPOTS.map(async (sp, idx) => {
     const w = await fetchWeather(sp[1], sp[2], state.when);
@@ -847,6 +881,106 @@ async function renderLocalWeather(){
   const sEl = document.getElementById('lwScore');
   sEl.textContent = `${star} ${ws}`;
   sEl.style.color = colorFor(ws);
+}
+
+// ---------- 天候ウィジェット ----------
+function getWeatherIcon(w) {
+  if (w.cloud > 80) return '☁️';
+  if (w.cloud > 50) return '⛅';
+  if (w.cloudLow > 30) return '☁️';
+  return '☀️';
+}
+async function renderWeatherWidget(){
+  const card = document.getElementById('weatherWidgetCard');
+  const where = state.user
+    ? {lat:state.user.lat, lon:state.user.lon, label:`現在地`}
+    : (()=>{ const c=map.getCenter(); return {lat:c.lat, lon:c.lng, label:`地図中心`}; })();
+  
+  document.getElementById('wwTitle').textContent = `${where.label} の今後の天候推移`;
+  
+  const wData = await fetchWeather(where.lat, where.lon, state.when);
+  if (!wData.hourly) return;
+  card.style.display = 'flex';
+  
+  const hourly = wData.hourly;
+  const times = hourly.time;
+  const base = new Date();
+  base.setHours(18, 0, 0, 0);
+  
+  // 1. 今夜(18:00 - 翌6:00)のグラフ (13データポイント)
+  const chartPoints = [];
+  const labelsHtml = [];
+  const pointsHtml = [];
+  let currentScore = '--';
+  
+  for (let i = 0; i <= 12; i++) {
+    const d = new Date(base);
+    d.setHours(18 + i);
+    const targetStr = fmtLocal(d).slice(0, 13);
+    const idx = times.findIndex(t => t.startsWith(targetStr));
+    
+    let score = 0;
+    if (idx >= 0) {
+      const hw = {
+        cloud: hourly.cloud_cover[idx], cloudLow: hourly.cloud_cover_low[idx],
+        humidity: hourly.relative_humidity_2m[idx], visibility: hourly.visibility[idx]
+      };
+      score = weatherScore(hw);
+      if (Math.abs(d - state.when) < 3600000) currentScore = score;
+    }
+    
+    const x = (i / 12) * 280 + 10;
+    const y = 70 - (score / 100) * 60; // 0=70(下), 100=10(上)
+    chartPoints.push(`${x},${y}`);
+    
+    pointsHtml.push(`<circle cx="${x}" cy="${y}" r="2" fill="var(--accent)"/>`);
+    if (i % 3 === 0) {
+      labelsHtml.push(`<text x="${x}" y="80" fill="var(--muted)" font-size="8" text-anchor="middle">${d.getHours()}</text>`);
+    }
+  }
+  
+  const csEl = document.getElementById('wwCurrentScore');
+  csEl.textContent = currentScore;
+  csEl.style.color = currentScore !== '--' ? colorFor(currentScore) : '';
+  document.getElementById('wwPolyline').setAttribute('points', chartPoints.join(' '));
+  document.getElementById('wwLabels').innerHTML = labelsHtml.join('');
+  document.getElementById('wwPoints').innerHTML = pointsHtml.join('');
+  
+  // 2. 3日間予報 (21時のデータ)
+  const dailyHtml = [];
+  const dayNames = ['日','月','火','水','木','金','土'];
+  
+  for (let i = 0; i <= 3; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    d.setHours(21);
+    
+    const targetStr = fmtLocal(d).slice(0, 13);
+    const idx = times.findIndex(t => t.startsWith(targetStr));
+    
+    let score = '--', icon = '❓';
+    if (idx >= 0) {
+      const hw = {
+        cloud: hourly.cloud_cover[idx], cloudLow: hourly.cloud_cover_low[idx],
+        humidity: hourly.relative_humidity_2m[idx], visibility: hourly.visibility[idx]
+      };
+      score = weatherScore(hw);
+      icon = getWeatherIcon(hw);
+    }
+    
+    const dayStr = i === 0 ? '今日' : i === 1 ? '明日' : `${d.getDate()}日(${dayNames[d.getDay()]})`;
+    const isSelected = d.getDate() === state.when.getDate() && d.getMonth() === state.when.getMonth();
+    const activeCls = isSelected ? ' active' : '';
+    
+    dailyHtml.push(`
+      <div class="ww-daily-item${activeCls}" onclick="setWhen(new Date(${d.getTime()}))">
+        <div class="ww-d-day">${dayStr}</div>
+        <div class="ww-d-icon">${icon}</div>
+        <div class="ww-d-score" style="color:${score!=='--'?colorFor(score):''}">${score}</div>
+      </div>
+    `);
+  }
+  document.getElementById('wwDailyList').innerHTML = dailyHtml.join('');
 }
 
 // ---------- 付近のスポット一覧 ----------
