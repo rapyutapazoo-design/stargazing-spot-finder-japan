@@ -508,15 +508,20 @@ function eventScore(d){
 async function fetchWeather(lat, lon, when){
   const key = `${lat.toFixed(2)},${lon.toFixed(2)},${when.toISOString().slice(0,13)}`;
   if(state.cache.has(key)) return state.cache.get(key);
-  const start = new Date(when); start.setHours(start.getHours()-1);
-  const end = new Date(when); end.setHours(end.getHours()+2);
-  const endD = new Date(when); endD.setDate(endD.getDate() + 3);
+  const targetStart = new Date(when);
+  const today = new Date();
+  const reqStart = targetStart < today ? targetStart : today;
+  
+  const targetEnd = new Date(when); targetEnd.setDate(targetEnd.getDate() + 3);
+  const todayEnd = new Date(); todayEnd.setDate(todayEnd.getDate() + 3);
+  const reqEnd = targetEnd > todayEnd ? targetEnd : todayEnd;
+
   const params = new URLSearchParams({
     latitude:lat, longitude:lon,
     hourly:"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,wind_speed_10m",
     timezone:"Asia/Tokyo",
-    start_date: when.toISOString().slice(0,10),
-    end_date: endD.toISOString().slice(0,10),
+    start_date: reqStart.toISOString().slice(0,10),
+    end_date: reqEnd.toISOString().slice(0,10),
   });
   try{
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
