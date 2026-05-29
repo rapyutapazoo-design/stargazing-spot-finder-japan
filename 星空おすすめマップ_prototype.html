@@ -138,6 +138,11 @@
   /* 天候ウィジェット */
   .weather-widget-card{display:none;flex-direction:column;gap:8px}
   .ww-header{display:flex;justify-content:space-between;align-items:center}
+  .ww-title-area{display:flex;align-items:center;gap:8px}
+  .ww-tabs{display:flex;background:#0a1428;border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px}
+  .ww-tab{background:transparent;border:none;color:var(--muted);font-size:10px;padding:4px 8px;border-radius:4px;cursor:pointer;font-weight:600;margin:0}
+  .ww-tab:hover{color:var(--text)}
+  .ww-tab.active{background:var(--panel2);color:var(--accent);box-shadow:0 1px 2px rgba(0,0,0,.2)}
   .ww-current-score{font-size:18px;font-weight:800;color:var(--accent)}
   .ww-chart-container{width:100%;height:80px;background:#0a1734;border:1px solid var(--line);border-radius:6px;position:relative}
   .ww-chart-container svg{width:100%;height:100%}
@@ -208,7 +213,14 @@
 
     <div class="card weather-widget-card" id="weatherWidgetCard">
       <div class="ww-header">
-        <h2 id="wwTitle" style="margin:0">今後の天候推移</h2>
+        <div class="ww-title-area">
+          <h2 id="wwTitle" style="margin:0">今後の天候推移</h2>
+          <div class="ww-tabs" id="wwTabs">
+            <button class="ww-tab active" data-type="temp">気温</button>
+            <button class="ww-tab" data-type="precip">降水</button>
+            <button class="ww-tab" data-type="score">スコア</button>
+          </div>
+        </div>
         <div class="ww-current-score" id="wwCurrentScore">--</div>
       </div>
       <div class="ww-chart-container">
@@ -443,6 +455,7 @@ const state = {
   user: null, // {lat,lon}
   cache: new Map(), // weather cache
   markers: new Map(), // spotIdx -> leaflet marker
+  chartType: 'temp', // 'temp', 'precip', 'score'
 };
 
 function roundToHour(d){ const x=new Date(d); x.setMinutes(0,0,0); return x; }
@@ -518,7 +531,7 @@ async function fetchWeather(lat, lon, when){
 
   const params = new URLSearchParams({
     latitude:lat, longitude:lon,
-    hourly:"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,wind_speed_10m",
+    hourly:"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,wind_speed_10m,precipitation_probability",
     timezone:"Asia/Tokyo",
     start_date: reqStart.toISOString().slice(0,10),
     end_date: reqEnd.toISOString().slice(0,10),
@@ -536,6 +549,7 @@ async function fetchWeather(lat, lon, when){
       humidity: j.hourly.relative_humidity_2m[i],
       visibility: j.hourly.visibility[i],
       temp: j.hourly.temperature_2m[i],
+      precip: j.hourly.precipitation_probability ? j.hourly.precipitation_probability[i] : 0,
       wind: j.hourly.wind_speed_10m[i],
       hourly: j.hourly
     };
@@ -907,6 +921,12 @@ async function renderWeatherWidget(){
   if (!wData.hourly) return;
   card.style.display = 'flex';
   
+  // タブのアクティブ状態更新
+  document.querySelectorAll('.ww-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === state.chartType);
+    btn.onclick = () => { state.chartType = btn.dataset.type; renderWeatherWidget(); };
+  });
+
   const hourly = wData.hourly;
   const times = hourly.time;
   const base = new Date();
@@ -916,7 +936,8 @@ async function renderWeatherWidget(){
   const chartPoints = [];
   const labelsHtml = [];
   const pointsHtml = [];
-  let currentScore = '--';
+  let currentValue = '--';
+  let unit = '';
   
   for (let i = 0; i <= 12; i++) {
     const d = new Date(base);
@@ -924,29 +945,56 @@ async function renderWeatherWidget(){
     const targetStr = fmtLocal(d).slice(0, 13);
     const idx = times.findIndex(t => t.startsWith(targetStr));
     
-    let score = 0;
+    let valForChart = 0;
+    
     if (idx >= 0) {
       const hw = {
         cloud: hourly.cloud_cover[idx], cloudLow: hourly.cloud_cover_low[idx],
         humidity: hourly.relative_humidity_2m[idx], visibility: hourly.visibility[idx]
       };
-      score = weatherScore(hw);
-      if (Math.abs(d - state.when) < 3600000) currentScore = score;
+      const sc = weatherScore(hw);
+      const temp = hourly.temperature_2m[idx];
+      const precip = hourly.precipitation_probability ? hourly.precipitation_probability[idx] : 0;
+      
+      if (state.chartType === 'temp') {
+        valForChart = temp;
+        unit = '℃';
+        if (Math.abs(d - state.when) < 3600000) currentValue = Math.round(temp);
+      } else if (state.chartType === 'precip') {
+        valForChart = precip;
+        unit = '%';
+        if (Math.abs(d - state.when) < 3600000) currentValue = Math.round(precip);
+      } else {
+        valForChart = sc;
+        unit = '';
+        if (Math.abs(d - state.when) < 3600000) currentValue = sc;
+      }
     }
     
     const x = (i / 12) * 280 + 10;
-    const y = 70 - (score / 100) * 60; // 0=70(下), 100=10(上)
+    let y = 70;
+    if (state.chartType === 'temp') {
+      const minTemp = -10, maxTemp = 35;
+      const ratio = Math.max(0, Math.min(1, (valForChart - minTemp) / (maxTemp - minTemp)));
+      y = 70 - ratio * 60;
+    } else {
+      y = 70 - (valForChart / 100) * 60;
+    }
     chartPoints.push(`${x},${y}`);
     
-    pointsHtml.push(`<circle cx="${x}" cy="${y}" r="2" fill="var(--accent)"/>`);
+    const dotColor = state.chartType === 'temp' ? '#f97316' : state.chartType === 'precip' ? '#3b82f6' : 'var(--accent)';
+    pointsHtml.push(`<circle cx="${x}" cy="${y}" r="2" fill="${dotColor}"/>`);
     if (i % 3 === 0) {
       labelsHtml.push(`<text x="${x}" y="80" fill="var(--muted)" font-size="8" text-anchor="middle">${d.getHours()}</text>`);
     }
   }
   
   const csEl = document.getElementById('wwCurrentScore');
-  csEl.textContent = currentScore;
-  csEl.style.color = currentScore !== '--' ? colorFor(currentScore) : '';
+  csEl.textContent = currentValue !== '--' ? `${currentValue}${unit}` : '--';
+  csEl.style.color = state.chartType === 'score' && currentValue !== '--' ? colorFor(currentValue) : 'var(--text)';
+  
+  const polyColor = state.chartType === 'temp' ? '#f97316' : state.chartType === 'precip' ? '#3b82f6' : 'var(--accent)';
+  document.getElementById('wwPolyline').setAttribute('stroke', polyColor);
   document.getElementById('wwPolyline').setAttribute('points', chartPoints.join(' '));
   document.getElementById('wwLabels').innerHTML = labelsHtml.join('');
   document.getElementById('wwPoints').innerHTML = pointsHtml.join('');
