@@ -19,7 +19,8 @@
 ```
 .
 ├── README.md                                  ← このファイル
-├── 星空おすすめマップ_prototype.html             ← プロトタイプ Web アプリ（単一HTML）
+├── public/
+│   └── index.html                             ← Web アプリ本体（単一HTML・Vercel 配信実体）
 ├── 天体観測おすすめ度マップ_検討レポート.docx     ← 既存サービス比較・要件・アーキテクチャ
 └── tools/
     └── build_report.js                        ← レポート生成スクリプト（docx-js）
@@ -27,10 +28,10 @@
 
 ## クイックスタート
 
-ブラウザで [`星空おすすめマップ_prototype.html`](./星空おすすめマップ_prototype.html) を直接開くだけです。サーバ不要・APIキー不要で動作します。
+ブラウザで [`public/index.html`](./public/index.html) を直接開くだけです。サーバ不要・APIキー不要で動作します。本番は同ファイルを Vercel で配信しています。
 
 ```bash
-open 星空おすすめマップ_prototype.html
+open public/index.html
 ```
 
 レポートを再生成したい場合:
