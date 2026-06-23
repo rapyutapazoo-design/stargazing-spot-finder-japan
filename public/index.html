@@ -200,8 +200,8 @@
         </div>
         <div class="mi-row mi-sub">
           <span id="miAge">月齢 —</span>
-          <span id="miRise">月の出 —</span>
-          <span id="miSet">月の入り —</span>
+          <span id="miSunset">日の入り —</span>
+          <span id="miSunrise">日の出 —</span>
         </div>
       </div>
       <div class="step-row">
@@ -1132,7 +1132,7 @@ function fmtHM(d){
   if(!d || isNaN(d.getTime())) return '—';
   return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 }
-// 観測時刻 d における月の満ち欠け・月齢・照度・月の出入りを更新
+// 観測時刻 d における月の満ち欠け・月齢・照度、および観測ウインドウ（日の入り/日の出）を更新
 function updateMoonDisplay(d){
   if(typeof SunCalc === 'undefined') return; // CDN障害時は静かにスキップ
   const loc = obsLocation();
@@ -1143,9 +1143,15 @@ function updateMoonDisplay(d){
   document.getElementById('miPhaseName').textContent = moonPhaseName(illum.phase);
   document.getElementById('miIllum').textContent = `照度 ${Math.round(f*100)}%`;
   document.getElementById('miAge').textContent = `月齢 ${moonAge(d).toFixed(1)}`;
-  const t = SunCalc.getMoonTimes(d, loc.lat, loc.lon);
-  document.getElementById('miRise').textContent = `月の出 ${t.alwaysDown ? '出ず' : fmtHM(t.rise)}`;
-  document.getElementById('miSet').textContent  = `月の入り ${t.alwaysUp ? '沈まず' : fmtHM(t.set)}`;
+  // 観測ウインドウ：当夜の日の入りと、選択時刻以降の次の日の出
+  const sun = SunCalc.getTimes(d, loc.lat, loc.lon);
+  let sunrise = sun.sunrise;
+  if(!sunrise || isNaN(sunrise.getTime()) || sunrise <= d){
+    const d2 = new Date(d); d2.setDate(d2.getDate() + 1);
+    sunrise = SunCalc.getTimes(d2, loc.lat, loc.lon).sunrise;
+  }
+  document.getElementById('miSunset').textContent  = `日の入り ${fmtHM(sun.sunset)}`;
+  document.getElementById('miSunrise').textContent = `日の出 ${fmtHM(sunrise)}`;
 }
 
 function relTimeText(d){
