@@ -70,9 +70,7 @@
 
   /* 時刻ピッカー */
   .time-pad{display:flex;align-items:center;gap:12px;margin-bottom:8px}
-  .clk{width:84px;height:84px;flex:0 0 84px;cursor:ns-resize;user-select:none;-webkit-user-select:none}
-  .clk:active{filter:brightness(1.15)}
-  .time-text{flex:1;text-align:center;line-height:1.15;cursor:ns-resize;user-select:none;-webkit-user-select:none;padding:4px;border-radius:6px}
+  .time-text{flex:1;text-align:center;line-height:1.15;cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px;border-radius:6px}
   .time-text:hover{background:#13234a}
   .time-text:focus{outline:1px solid var(--accent)}
   .t-date{font-size:14px;color:var(--text);font-weight:600;letter-spacing:.02em}
@@ -89,7 +87,7 @@
   .hidden-when{position:absolute;left:-9999px;top:-9999px;width:0;height:0;opacity:0}
 
   /* 月の満ち欠け表示（観測時刻カード） */
-  .moonphase{filter:drop-shadow(0 0 6px rgba(160,190,255,.25))}
+  .moonphase{width:84px;height:84px;flex:0 0 84px;user-select:none;-webkit-user-select:none;filter:drop-shadow(0 0 6px rgba(160,190,255,.25))}
   .moon-info{display:flex;flex-direction:column;gap:3px;margin-top:8px}
   .moon-info .mi-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px}
   .moon-info .mi-name{font-weight:700;color:var(--accent)}
@@ -174,7 +172,7 @@
     <div class="card">
       <h2>観測時刻</h2>
       <div class="time-pad">
-        <svg class="clk moonphase" viewBox="0 0 100 100" id="moonPhaseSvg" aria-label="選択時刻の月の満ち欠け">
+        <svg class="moonphase" viewBox="0 0 100 100" id="moonPhaseSvg" aria-label="選択時刻の月の満ち欠け">
           <defs>
             <radialGradient id="moonGlow" cx="42%" cy="38%" r="62%">
               <stop offset="0%" stop-color="#fffdf2"/>
@@ -215,7 +213,7 @@
         <button class="preset" id="btn-tomorrow">明日21時</button>
         <button class="preset" id="btn-weekend">今週末21時</button>
       </div>
-      <div class="small" style="color:var(--muted);margin-top:6px">月または時刻表示を<b>マウスホイール</b>で回す → ±1時間 移動。テキストをクリックで時刻直接編集も可。</div>
+      <div class="small" style="color:var(--muted);margin-top:6px"><b>−1時/＋1時・−1日/＋1日</b>ボタンで移動。時刻表示をクリックで直接編集も可。</div>
       <input id="whenInput" type="datetime-local" class="hidden-when">
       <div id="locWeather" class="loc-weather">
         <div class="loc-where small">基準地点を取得中…</div>
@@ -1164,7 +1162,7 @@ function relTimeText(d){
   return `${Math.round(a/86400)}日${sign}`;
 }
 
-function updateClockUI(d){
+function updateTimeUI(d){
   // テキスト（日付・曜日・時刻・相対時刻）
   document.getElementById('tDate').textContent =
     `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
@@ -1174,13 +1172,13 @@ function updateClockUI(d){
   document.getElementById('tRel').textContent  = relTimeText(d);
   // 隠し input（直接編集に使う）
   wel.value = fmtLocal(d);
-  // 月の満ち欠け表示を更新（旧アナログ時計・針ロジックの移行先）
+  // 月の満ち欠け表示を更新
   updateMoonDisplay(d);
 }
 
 function setWhen(d){
   state.when = roundToHour(d);
-  updateClockUI(state.when);
+  updateTimeUI(state.when);
   state.cache.clear();
   refresh();
 }
@@ -1195,22 +1193,7 @@ document.querySelectorAll('.step').forEach(btn => {
   });
 });
 
-// マウスホイール: 上スクロール=時間進む / 下スクロール=戻る（蓄積方式で誤連打防止）
-let _wheelAcc = 0;
-const _wheelStep = 30; // 30px ぶん回したら ±1h
-['moonPhaseSvg','timeText'].forEach(id => {
-  document.getElementById(id).addEventListener('wheel', e => {
-    e.preventDefault();
-    _wheelAcc += e.deltaY;
-    while(Math.abs(_wheelAcc) >= _wheelStep){
-      const dir = _wheelAcc < 0 ? 1 : -1; // 上スクロール=未来方向
-      _wheelAcc += dir * _wheelStep;       // 蓄積を 0 に近づける
-      const d = new Date(state.when);
-      d.setHours(d.getHours() + dir);
-      setWhen(d);
-    }
-  }, {passive:false});
-});
+// （ホイールでの時刻変更機能は廃止。時刻移動は ±1時/±1日ボタン・プリセット・クリック編集で行う）
 
 // テキストをクリックすると隠し input を呼び出して直接編集
 document.getElementById('timeText').addEventListener('click', e => {
@@ -1246,7 +1229,7 @@ document.getElementById('btn-weekend').onclick = () => {
 };
 
 // 初期描画
-updateClockUI(state.when);
+updateTimeUI(state.when);
 document.getElementById('geo').onclick = ()=>{
   if(!navigator.geolocation){ alert('Geolocation 非対応'); return; }
   navigator.geolocation.getCurrentPosition(pos=>{
