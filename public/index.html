@@ -88,6 +88,15 @@
   .preset:hover{background:#13234a}
   .hidden-when{position:absolute;left:-9999px;top:-9999px;width:0;height:0;opacity:0}
 
+  /* 月の満ち欠け表示（観測時刻カード） */
+  .moonphase{filter:drop-shadow(0 0 6px rgba(160,190,255,.25))}
+  .moon-info{display:flex;flex-direction:column;gap:3px;margin-top:8px}
+  .moon-info .mi-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px}
+  .moon-info .mi-name{font-weight:700;color:var(--accent)}
+  .moon-info .mi-illum{font-variant-numeric:tabular-nums;color:var(--text)}
+  .moon-info .mi-row.mi-sub{font-size:11px;color:var(--muted)}
+  .moon-info .mi-sub span{font-variant-numeric:tabular-nums}
+
   /* レイヤートグル */
   .toggle{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#0a1734;border:1px solid var(--line);margin-bottom:6px;cursor:pointer;user-select:none}
   .toggle:hover{background:#13234a}
@@ -165,24 +174,34 @@
     <div class="card">
       <h2>観測時刻</h2>
       <div class="time-pad">
-        <svg class="clk" viewBox="0 0 100 100" id="clkSvg" aria-label="アナログ時計">
+        <svg class="clk moonphase" viewBox="0 0 100 100" id="moonPhaseSvg" aria-label="選択時刻の月の満ち欠け">
           <defs>
-            <radialGradient id="clkBg" cx="50%" cy="40%" r="60%">
-              <stop offset="0%" stop-color="#1a3a6e"/>
-              <stop offset="100%" stop-color="#0a1428"/>
+            <radialGradient id="moonGlow" cx="42%" cy="38%" r="62%">
+              <stop offset="0%" stop-color="#fffdf2"/>
+              <stop offset="65%" stop-color="#e8eefc"/>
+              <stop offset="100%" stop-color="#c2cbe0"/>
             </radialGradient>
           </defs>
-          <circle cx="50" cy="50" r="46" fill="url(#clkBg)" stroke="#2e5984" stroke-width="2"/>
-          <g id="clkTicks"></g>
-          <g id="clkNumbers"></g>
-          <line id="hourHand" x1="50" y1="50" x2="50" y2="28" stroke="#fbbf24" stroke-width="3.5" stroke-linecap="round" transform-origin="50 50"/>
-          <line id="minHand"  x1="50" y1="50" x2="50" y2="18" stroke="#e6ecff" stroke-width="2"   stroke-linecap="round" transform-origin="50 50"/>
-          <circle cx="50" cy="50" r="2.5" fill="#7fb3ff"/>
+          <circle cx="50" cy="50" r="46" fill="#0b1020" stroke="#2e5984" stroke-width="2"/>
+          <circle cx="50" cy="50" r="40" fill="#172139"/>
+          <path id="moonLit" fill="url(#moonGlow)" d=""/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#33406a" stroke-width="0.8"/>
         </svg>
         <div class="time-text" id="timeText" tabindex="0">
           <div class="t-date"><span id="tDate">--/--</span> <span id="tDay" class="t-day">(-)</span></div>
           <div class="t-time" id="tTime">--:--</div>
           <div class="t-rel small" id="tRel">—</div>
+        </div>
+      </div>
+      <div class="moon-info" id="moonInfo">
+        <div class="mi-row">
+          <span class="mi-name" id="miPhaseName">—</span>
+          <span class="mi-illum" id="miIllum">照度 —</span>
+        </div>
+        <div class="mi-row mi-sub">
+          <span id="miAge">月齢 —</span>
+          <span id="miRise">月の出 —</span>
+          <span id="miSet">月の入り —</span>
         </div>
       </div>
       <div class="step-row">
@@ -196,7 +215,7 @@
         <button class="preset" id="btn-tomorrow">明日21時</button>
         <button class="preset" id="btn-weekend">今週末21時</button>
       </div>
-      <div class="small" style="color:var(--muted);margin-top:6px">時計やテキストを<b>マウスホイール</b>で回す → ±1時間 移動。テキストをクリックで時刻直接編集も可。</div>
+      <div class="small" style="color:var(--muted);margin-top:6px">月または時刻表示を<b>マウスホイール</b>で回す → ±1時間 移動。テキストをクリックで時刻直接編集も可。</div>
       <input id="whenInput" type="datetime-local" class="hidden-when">
       <div id="locWeather" class="loc-weather">
         <div class="loc-where small">基準地点を取得中…</div>
@@ -414,6 +433,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
 <script>
 // ---------- Sample observation spots (Bortle値は概算) ----------
 const SPOTS = [
@@ -1081,35 +1101,52 @@ function nearItemHtml(it, dist){
 const wel = document.getElementById('whenInput'); // 隠し input（直接編集用）
 const DAYS = ['日','月','火','水','木','金','土'];
 
-// 時計の目盛りと数字を初期化
-(function initClockFace(){
-  const ticks = document.getElementById('clkTicks');
-  const nums  = document.getElementById('clkNumbers');
-  for(let i=0;i<12;i++){
-    const a = i*30 - 90;
-    const x1 = 50 + Math.cos(a*Math.PI/180)*42;
-    const y1 = 50 + Math.sin(a*Math.PI/180)*42;
-    const x2 = 50 + Math.cos(a*Math.PI/180)*46;
-    const y2 = 50 + Math.sin(a*Math.PI/180)*46;
-    const ln = document.createElementNS('http://www.w3.org/2000/svg','line');
-    ln.setAttribute('x1',x1); ln.setAttribute('y1',y1);
-    ln.setAttribute('x2',x2); ln.setAttribute('y2',y2);
-    ln.setAttribute('stroke', i%3===0 ? '#7fb3ff' : '#2e5984');
-    ln.setAttribute('stroke-width', i%3===0 ? 1.6 : 1);
-    ticks.appendChild(ln);
-    if(i%3===0){
-      const tx = document.createElementNS('http://www.w3.org/2000/svg','text');
-      tx.setAttribute('x', 50 + Math.cos(a*Math.PI/180)*36);
-      tx.setAttribute('y', 50 + Math.sin(a*Math.PI/180)*36 + 2.8);
-      tx.setAttribute('text-anchor','middle');
-      tx.setAttribute('fill','#9aa6c7');
-      tx.setAttribute('font-size','7');
-      tx.setAttribute('font-weight','600');
-      tx.textContent = i===0 ? '12' : String(i);
-      nums.appendChild(tx);
-    }
-  }
-})();
+// ---------- 月の満ち欠け表示（SunCalc / 第1段階・通信なし） ----------
+// 観測地点：現在地があればそれ、なければ地図中心（既存パターンを踏襲）
+function obsLocation(){
+  if(state.user) return {lat:state.user.lat, lon:state.user.lon};
+  const c = map.getCenter(); return {lat:c.lat, lon:c.lng};
+}
+// 位相 (0=新月,0.25=上弦,0.5=満月,0.75=下弦) → 和名
+function moonPhaseName(phase){
+  if(phase < 0.03 || phase > 0.97) return '新月';
+  if(phase < 0.22) return '三日月';
+  if(phase < 0.28) return '上弦の月';
+  if(phase < 0.47) return '十三夜月';
+  if(phase < 0.53) return '満月';
+  if(phase < 0.72) return '寝待月';
+  if(phase < 0.78) return '下弦の月';
+  return '有明月';
+}
+// 照度率 f(0..1) と満ち欠け方向から、光って見える領域の SVG パスを生成
+// 外周（弧）＝光っている側の半円、境界（ターミネーター）＝横半径可変の半楕円
+function buildMoonLitPath(f, waxing, cx, cy, r){
+  if(f <= 0.005) return '';                 // 新月：光なし
+  const sweepLimb = waxing ? 1 : 0;          // waxing=右が光る
+  const b = r * (1 - 2*f);                   // ターミネーターの横半径(符号付き)
+  const sweepTerm = (b > 0) ? sweepLimb : (1 - sweepLimb);
+  return `M ${cx},${cy-r} A ${r},${r} 0 0 ${sweepLimb} ${cx},${cy+r} `
+       + `A ${Math.abs(b).toFixed(2)},${r} 0 0 ${sweepTerm} ${cx},${cy-r} Z`;
+}
+function fmtHM(d){
+  if(!d || isNaN(d.getTime())) return '—';
+  return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+}
+// 観測時刻 d における月の満ち欠け・月齢・照度・月の出入りを更新
+function updateMoonDisplay(d){
+  if(typeof SunCalc === 'undefined') return; // CDN障害時は静かにスキップ
+  const loc = obsLocation();
+  const illum = SunCalc.getMoonIllumination(d);
+  const f = illum.fraction;                  // 照度率 0..1
+  const waxing = illum.phase <= 0.5;         // 満ちている途中か
+  document.getElementById('moonLit').setAttribute('d', buildMoonLitPath(f, waxing, 50, 50, 40));
+  document.getElementById('miPhaseName').textContent = moonPhaseName(illum.phase);
+  document.getElementById('miIllum').textContent = `照度 ${Math.round(f*100)}%`;
+  document.getElementById('miAge').textContent = `月齢 ${moonAge(d).toFixed(1)}`;
+  const t = SunCalc.getMoonTimes(d, loc.lat, loc.lon);
+  document.getElementById('miRise').textContent = `月の出 ${t.alwaysDown ? '出ず' : fmtHM(t.rise)}`;
+  document.getElementById('miSet').textContent  = `月の入り ${t.alwaysUp ? '沈まず' : fmtHM(t.set)}`;
+}
 
 function relTimeText(d){
   const diffMs = d.getTime() - Date.now();
@@ -1122,14 +1159,7 @@ function relTimeText(d){
 }
 
 function updateClockUI(d){
-  // 針の角度（24時間制で hour%12）
-  const h = d.getHours()%12;
-  const m = d.getMinutes();
-  const hourAng = (h + m/60)*30;
-  const minAng  = m*6;
-  document.getElementById('hourHand').setAttribute('transform', `rotate(${hourAng} 50 50)`);
-  document.getElementById('minHand').setAttribute('transform',  `rotate(${minAng} 50 50)`);
-  // テキスト
+  // テキスト（日付・曜日・時刻・相対時刻）
   document.getElementById('tDate').textContent =
     `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
   document.getElementById('tDay').textContent  = `(${DAYS[d.getDay()]})`;
@@ -1138,6 +1168,8 @@ function updateClockUI(d){
   document.getElementById('tRel').textContent  = relTimeText(d);
   // 隠し input（直接編集に使う）
   wel.value = fmtLocal(d);
+  // 月の満ち欠け表示を更新（旧アナログ時計・針ロジックの移行先）
+  updateMoonDisplay(d);
 }
 
 function setWhen(d){
@@ -1160,7 +1192,7 @@ document.querySelectorAll('.step').forEach(btn => {
 // マウスホイール: 上スクロール=時間進む / 下スクロール=戻る（蓄積方式で誤連打防止）
 let _wheelAcc = 0;
 const _wheelStep = 30; // 30px ぶん回したら ±1h
-['clkSvg','timeText'].forEach(id => {
+['moonPhaseSvg','timeText'].forEach(id => {
   document.getElementById(id).addEventListener('wheel', e => {
     e.preventDefault();
     _wheelAcc += e.deltaY;
@@ -1216,17 +1248,18 @@ document.getElementById('geo').onclick = ()=>{
     document.getElementById('geoInfo').textContent = `現在地: ${state.user.lat.toFixed(3)}, ${state.user.lon.toFixed(3)}`;
     L.circleMarker([state.user.lat, state.user.lon],{radius:8,color:'#7fb3ff',fillColor:'#7fb3ff',fillOpacity:.6}).addTo(layer).bindPopup('あなたの位置');
     map.setView([state.user.lat, state.user.lon], 7);
+    updateMoonDisplay(state.when); // 月の出入りを現在地基準で更新
     refresh();
   }, err=> alert('位置情報が取得できません: '+err.message));
 };
-document.getElementById('clearGeo').onclick=()=>{ state.user=null; document.getElementById('geoInfo').textContent='未設定（アクセス性は満点扱い）'; refresh(); };
+document.getElementById('clearGeo').onclick=()=>{ state.user=null; document.getElementById('geoInfo').textContent='未設定（アクセス性は満点扱い）'; updateMoonDisplay(state.when); refresh(); };
 
 // マップ移動：基準地点の天気更新（現在地未設定時のみ）＋ 雲量レイヤーが ON なら再取得
 let panTimer=null;
 map.on('moveend', ()=>{
   clearTimeout(panTimer);
   panTimer=setTimeout(()=>{
-    if(!state.user) renderLocalWeather();
+    if(!state.user){ renderLocalWeather(); updateMoonDisplay(state.when); } // 地図中心基準で月の出入りも更新
     if(document.getElementById('lyrCloud').checked) buildCloudOverlay();
   }, 400);
 });
