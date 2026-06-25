@@ -1258,7 +1258,7 @@ document.getElementById('geo').onclick = ()=>{
     state.user={lat:pos.coords.latitude, lon:pos.coords.longitude, acc:pos.coords.accuracy};
     document.getElementById('geoInfo').textContent = `現在地: ${state.user.lat.toFixed(3)}, ${state.user.lon.toFixed(3)}`;
     renderUserLocation();                                  // 専用レイヤーに青い点＋精度円
-    map.flyTo([state.user.lat, state.user.lon], 13, {duration:1.2}); // Googleマップ風に拡大
+    map.flyTo([state.user.lat, state.user.lon], 8, {duration:1.2}); // 地方レベル（数県）へ拡大
     updateMoonDisplay(state.when); // 月の出入りを現在地基準で更新
     refresh();
   }, err=> alert('位置情報が取得できません: '+err.message));
