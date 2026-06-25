@@ -86,6 +86,12 @@
   .preset:hover{background:#13234a}
   .hidden-when{position:absolute;left:-9999px;top:-9999px;width:0;height:0;opacity:0}
 
+  /* 現在地マーカー（脈動する青い点） */
+  .user-marker{position:relative}
+  .user-dot{position:absolute;left:0;top:0;width:100%;height:100%;border-radius:50%;background:#2b83ff;border:2px solid #fff;box-sizing:border-box;box-shadow:0 0 6px rgba(43,131,255,.9)}
+  .user-pulse{position:absolute;left:0;top:0;width:100%;height:100%;border-radius:50%;background:rgba(43,131,255,.45);animation:userPulse 1.8s ease-out infinite}
+  @keyframes userPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(3);opacity:0}}
+
   /* 月の満ち欠け表示（観測時刻カード） */
   .moonphase{width:84px;height:84px;flex:0 0 84px;user-select:none;-webkit-user-select:none;filter:drop-shadow(0 0 6px rgba(160,190,255,.25))}
   .moon-info{display:flex;flex-direction:column;gap:3px;margin-top:8px}
@@ -228,6 +234,15 @@
       </div>
     </div>
 
+    <div class="card">
+      <h2>あなたの場所</h2>
+      <div class="row">
+        <button id="geo">現在地を取得</button>
+        <button id="clearGeo" class="ghost">解除</button>
+      </div>
+      <div id="geoInfo" class="small" style="margin-top:6px">未設定（アクセス性は満点扱い）</div>
+    </div>
+
     <div class="card weather-widget-card" id="weatherWidgetCard">
       <div class="ww-header">
         <div class="ww-title-area">
@@ -255,15 +270,6 @@
       <div id="nearList" class="near-list">
         <div class="small" style="color:var(--muted)">「現在地を取得」ボタンを押すと、距離順に近い観測候補地が並びます。</div>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>あなたの場所</h2>
-      <div class="row">
-        <button id="geo">現在地を取得</button>
-        <button id="clearGeo" class="ghost">解除</button>
-      </div>
-      <div id="geoInfo" class="small" style="margin-top:6px">未設定（アクセス性は満点扱い）</div>
     </div>
 
     <div class="card">
@@ -821,6 +827,22 @@ cloudLegendCtl.onAdd = function(){
 
 const layer = L.layerGroup().addTo(map);
 
+// ---------- 現在地マーカー（refresh で消えない専用レイヤー） ----------
+const userLayer = L.layerGroup().addTo(map);
+// ズームに応じたドット径（px）。下限10〜上限34でクランプ
+function userDotSize(zoom){ return Math.max(10, Math.min(34, Math.round((zoom - 5) * 2.6))); }
+function renderUserLocation(){
+  userLayer.clearLayers();
+  if(!state.user) return;
+  const {lat, lon, acc} = state.user;
+  // GPS精度円（メートル指定＝ズームで自動スケール）
+  if(acc) L.circle([lat,lon], {radius:acc, color:'#2b83ff', weight:1, fillColor:'#2b83ff', fillOpacity:.12, interactive:false}).addTo(userLayer);
+  // 脈動する青い点（ズームでサイズ可変）
+  const s = userDotSize(map.getZoom());
+  const icon = L.divIcon({ html:`<div class="user-pulse"></div><div class="user-dot"></div>`, className:'user-marker', iconSize:[s,s], iconAnchor:[s/2,s/2] });
+  L.marker([lat,lon], {icon, interactive:false, keyboard:false}).addTo(userLayer);
+}
+
 function pin(score){
   const c = colorFor(score);
   const html = `<div style="
@@ -1233,15 +1255,18 @@ updateTimeUI(state.when);
 document.getElementById('geo').onclick = ()=>{
   if(!navigator.geolocation){ alert('Geolocation 非対応'); return; }
   navigator.geolocation.getCurrentPosition(pos=>{
-    state.user={lat:pos.coords.latitude, lon:pos.coords.longitude};
+    state.user={lat:pos.coords.latitude, lon:pos.coords.longitude, acc:pos.coords.accuracy};
     document.getElementById('geoInfo').textContent = `現在地: ${state.user.lat.toFixed(3)}, ${state.user.lon.toFixed(3)}`;
-    L.circleMarker([state.user.lat, state.user.lon],{radius:8,color:'#7fb3ff',fillColor:'#7fb3ff',fillOpacity:.6}).addTo(layer).bindPopup('あなたの位置');
-    map.setView([state.user.lat, state.user.lon], 7);
+    renderUserLocation();                                  // 専用レイヤーに青い点＋精度円
+    map.flyTo([state.user.lat, state.user.lon], 13, {duration:1.2}); // Googleマップ風に拡大
     updateMoonDisplay(state.when); // 月の出入りを現在地基準で更新
     refresh();
   }, err=> alert('位置情報が取得できません: '+err.message));
 };
-document.getElementById('clearGeo').onclick=()=>{ state.user=null; document.getElementById('geoInfo').textContent='未設定（アクセス性は満点扱い）'; updateMoonDisplay(state.when); refresh(); };
+document.getElementById('clearGeo').onclick=()=>{ state.user=null; userLayer.clearLayers(); document.getElementById('geoInfo').textContent='未設定（アクセス性は満点扱い）'; updateMoonDisplay(state.when); refresh(); };
+
+// ズーム変更で現在地マーカーのサイズを再計算（現在地設定時のみ）
+map.on('zoomend', ()=>{ if(state.user) renderUserLocation(); });
 
 // マップ移動：基準地点の天気更新（現在地未設定時のみ）＋ 雲量レイヤーが ON なら再取得
 let panTimer=null;
