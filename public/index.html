@@ -74,7 +74,9 @@
 
   /* 時刻ピッカー */
   .time-pad{display:flex;align-items:center;gap:12px;margin-bottom:8px}
-  .time-text{flex:1;text-align:center;line-height:1.15;cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px;border-radius:6px}
+  .time-text{position:relative;flex:1;text-align:center;line-height:1.15;cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px;border-radius:6px}
+  .t-pick{position:absolute;top:2px;right:5px;font-size:11px;opacity:.45;pointer-events:none}
+  .time-input-overlay{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer}
   .time-text:hover{background:#13234a}
   .time-text:focus{outline:1px solid var(--accent)}
   .t-date{font-size:14px;color:var(--text);font-weight:600;letter-spacing:.02em}
@@ -195,10 +197,12 @@
           <path id="moonLit" fill="url(#moonGlow)" d=""/>
           <circle cx="50" cy="50" r="40" fill="none" stroke="#33406a" stroke-width="0.8"/>
         </svg>
-        <div class="time-text" id="timeText" tabindex="0">
+        <div class="time-text" id="timeText" tabindex="0" title="クリックで日時を選択">
           <div class="t-date"><span id="tDate">--/--</span> <span id="tDay" class="t-day">(-)</span></div>
           <div class="t-time" id="tTime">--:--</div>
           <div class="t-rel small" id="tRel">—</div>
+          <span class="t-pick" aria-hidden="true">📅</span>
+          <input id="whenInput" type="datetime-local" class="time-input-overlay" aria-label="観測日時を選択">
         </div>
       </div>
       <div class="moon-info" id="moonInfo">
@@ -224,8 +228,7 @@
         <button class="preset" id="btn-tomorrow">明日21時</button>
         <button class="preset" id="btn-weekend">今週末21時</button>
       </div>
-      <div class="small" style="color:var(--muted);margin-top:6px"><b>−1時/＋1時・−1日/＋1日</b>ボタンで移動。時刻表示をクリックで直接編集も可。</div>
-      <input id="whenInput" type="datetime-local" class="hidden-when">
+      <div class="small" style="color:var(--muted);margin-top:6px"><b>−1時/＋1時・−1日/＋1日</b>ボタンで移動。時刻表示をクリックで日時を直接選択も可。</div>
       <div id="locWeather" class="loc-weather">
         <div class="loc-where small">基準地点を取得中…</div>
         <div class="loc-grid" id="locGrid">
@@ -1223,23 +1226,14 @@ document.querySelectorAll('.step').forEach(btn => {
 
 // （ホイールでの時刻変更機能は廃止。時刻移動は ±1時/±1日ボタン・プリセット・クリック編集で行う）
 
-// テキストをクリックすると隠し input を呼び出して直接編集
-document.getElementById('timeText').addEventListener('click', e => {
-  if(e.detail >= 2){ // ダブルクリックで編集
-    wel.style.position = 'fixed'; wel.style.left = '50%'; wel.style.top = '20%';
-    wel.style.opacity = '1'; wel.style.width = 'auto'; wel.style.height='auto';
-    wel.style.zIndex='10000'; wel.style.background='var(--panel)'; wel.style.color='var(--text)';
-    wel.style.padding='8px';
-    wel.focus(); try{ wel.showPicker && wel.showPicker(); }catch(_){}
-  }
+// 時刻表示をシングルクリック → その場でネイティブ日時ピッカーを開く
+function openWhenPicker(){ try{ wel.showPicker(); }catch(_){ wel.focus(); } }
+wel.addEventListener('click', e => { e.preventDefault(); openWhenPicker(); });
+// キーボード操作（Enter/Space）でも開けるようにする
+document.getElementById('timeText').addEventListener('keydown', e => {
+  if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openWhenPicker(); }
 });
-wel.addEventListener('change', e => {
-  if(e.target.value) setWhen(new Date(e.target.value));
-  wel.style.position='absolute'; wel.style.left='-9999px'; wel.style.opacity='0';
-});
-wel.addEventListener('blur', () => {
-  wel.style.position='absolute'; wel.style.left='-9999px'; wel.style.opacity='0';
-});
+wel.addEventListener('change', e => { if(e.target.value) setWhen(new Date(e.target.value)); });
 
 // プリセット
 document.getElementById('btn-tonight').onclick = () => {
