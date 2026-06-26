@@ -38,11 +38,11 @@
   button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
   /* 観測時刻カードの天体イベントバッジ */
   .moon-events{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-  .moon-events:empty{display:none}
   .ev-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;border:1px solid var(--line);background:#0a1734;color:var(--text);display:inline-flex;align-items:center;gap:4px}
   .ev-badge.ev-shower{border-color:#7c5cff;color:#c4b5ff}
   .ev-badge.ev-new{border-color:#3a7afe;color:#a9c5ff}
   .ev-badge.ev-super{border-color:#f5a524;color:#ffd9a0}
+  .ev-badge.ev-none{color:var(--muted);border-color:var(--line);font-weight:500}
   .leaflet-popup-content{font:13px/1.45 -apple-system,"Hiragino Sans",sans-serif;color:#0a1428;max-width:240px}
   .pop-title{font-weight:700;margin-bottom:4px}
   .pop-bar{height:6px;border-radius:4px;background:#e2e8f0;margin:4px 0;position:relative;overflow:hidden}
@@ -1175,6 +1175,8 @@ function renderMoonEvents(d){
   const ill = SunCalc.getMoonIllumination(d);
   const pos = SunCalc.getMoonPosition(d, loc.lat, loc.lon);
   if(ill.fraction > 0.97 && pos.distance <= 367607) badges.push(`<span class="ev-badge ev-super">🌕 スーパームーン</span>`);
+  // 該当イベントが無くても枠を常時表示（ボタン位置を固定し誤押下を防止）
+  if(badges.length === 0) badges.push(`<span class="ev-badge ev-none">直近の天体イベントはなし</span>`);
   el.innerHTML = badges.join('');
 }
 
