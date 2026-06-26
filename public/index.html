@@ -36,9 +36,13 @@
   .small{font-size:11px;color:var(--muted)}
   button{background:var(--accent);color:#0a1428;border:0;border-radius:6px;padding:8px 10px;font-weight:600;cursor:pointer;font-size:12px}
   button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
-  .moon-row{display:flex;align-items:center;gap:8px}
-  .moon{width:28px;height:28px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fefae0 0%,#cbd5e1 60%,#475569 100%);position:relative;flex:0 0 28px}
-  .moon::after{content:"";position:absolute;inset:0;border-radius:50%;background:#0f1c3a;clip-path:inset(0 var(--phase,50%) 0 0)}
+  /* 観測時刻カードの天体イベントバッジ */
+  .moon-events{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .moon-events:empty{display:none}
+  .ev-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;border:1px solid var(--line);background:#0a1734;color:var(--text);display:inline-flex;align-items:center;gap:4px}
+  .ev-badge.ev-shower{border-color:#7c5cff;color:#c4b5ff}
+  .ev-badge.ev-new{border-color:#3a7afe;color:#a9c5ff}
+  .ev-badge.ev-super{border-color:#f5a524;color:#ffd9a0}
   .leaflet-popup-content{font:13px/1.45 -apple-system,"Hiragino Sans",sans-serif;color:#0a1428;max-width:240px}
   .pop-title{font-weight:700;margin-bottom:4px}
   .pop-bar{height:6px;border-radius:4px;background:#e2e8f0;margin:4px 0;position:relative;overflow:hidden}
@@ -208,6 +212,7 @@
           <span id="miSunrise">日の出 —</span>
         </div>
       </div>
+      <div class="moon-events" id="moonEvents"></div>
       <div class="step-row">
         <button class="step" data-d="-1" title="1日前">−1日</button>
         <button class="step" data-h="-1" title="1時間前">−1時</button>
@@ -270,18 +275,6 @@
       <div id="nearList" class="near-list">
         <div class="small" style="color:var(--muted)">「現在地を取得」ボタンを押すと、距離順に近い観測候補地が並びます。</div>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>天体イベント</h2>
-      <div class="moon-row">
-        <div id="moonIcon" class="moon" style="--phase:60%"></div>
-        <div>
-          <div id="moonAge" style="font-size:13px">月齢: -</div>
-          <div id="moonNote" class="small">満月に近いほど星は見にくい</div>
-        </div>
-      </div>
-      <div id="events" class="small" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
@@ -858,15 +851,7 @@ function bar(p){ return `<div class="pop-bar"><span style="width:${p}%;backgroun
 async function refresh(){
   layer.clearLayers();
   state.markers.clear();
-  const ev = eventScore(state.when);
-  document.getElementById('moonAge').textContent = `月齢: ${ev.age.toFixed(1)} (新月=暗い夜空)`;
-  document.getElementById('moonIcon').style.setProperty('--phase', `${(1 - Math.cos(ev.age/29.53*2*Math.PI))/2*100}%`);
-  document.getElementById('moonNote').textContent = ev.age<3||ev.age>26 ? "新月期：絶好の暗夜！" :
-                                                   ev.age<10||ev.age>20 ? "月明かりは控えめ" :
-                                                   "月明かりが強め — 月没後の観測を検討";
-  document.getElementById('events').innerHTML = ev.shower
-    ? `<b>${ev.shower}</b> 極大が±3日以内（イベントスコア +${ev.bonus}）`
-    : "本日±3日に主要流星群の極大はなし";
+  const ev = eventScore(state.when);  // 月/イベントスコア（総合スコアに使用・表示は観測時刻カードへ移行）
 
   // (1) 基準地点（現在地 or マップ中心）の簡易気象
   renderLocalWeather();
@@ -1172,6 +1157,25 @@ function updateMoonDisplay(d){
   }
   document.getElementById('miSunset').textContent  = `日の入り ${fmtHM(sun.sunset)}`;
   document.getElementById('miSunrise').textContent = `日の出 ${fmtHM(sunrise)}`;
+  renderMoonEvents(d);
+}
+// 天体イベントのバッジ表示（近接/該当するもののみ）。日食・月食は第2段で追加予定。
+function renderMoonEvents(d){
+  const el = document.getElementById('moonEvents');
+  if(!el || typeof SunCalc === 'undefined') return;
+  const loc = obsLocation();
+  const badges = [];
+  // 流星群（極大±3日以内）
+  const ev = eventScore(d);
+  if(ev.shower) badges.push(`<span class="ev-badge ev-shower">☄ ${ev.shower}</span>`);
+  // 新月（新月近傍）
+  const age = moonAge(d);
+  if(age < 1.5 || age > 28.0) badges.push(`<span class="ev-badge ev-new">🌑 新月</span>`);
+  // スーパームーン（満月かつ近地点 ≈367,607km以内）
+  const ill = SunCalc.getMoonIllumination(d);
+  const pos = SunCalc.getMoonPosition(d, loc.lat, loc.lon);
+  if(ill.fraction > 0.97 && pos.distance <= 367607) badges.push(`<span class="ev-badge ev-super">🌕 スーパームーン</span>`);
+  el.innerHTML = badges.join('');
 }
 
 function relTimeText(d){
@@ -1258,7 +1262,7 @@ document.getElementById('geo').onclick = ()=>{
     state.user={lat:pos.coords.latitude, lon:pos.coords.longitude, acc:pos.coords.accuracy};
     document.getElementById('geoInfo').textContent = `現在地: ${state.user.lat.toFixed(3)}, ${state.user.lon.toFixed(3)}`;
     renderUserLocation();                                  // 専用レイヤーに青い点＋精度円
-    map.flyTo([state.user.lat, state.user.lon], 8, {duration:1.2}); // 地方レベル（数県）へ拡大
+    map.flyTo([state.user.lat, state.user.lon], 9, {duration:1.2}); // 地方レベル（数県）へ拡大
     updateMoonDisplay(state.when); // 月の出入りを現在地基準で更新
     refresh();
   }, err=> alert('位置情報が取得できません: '+err.message));
