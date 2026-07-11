@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星空おすすめマップ — プロトタイプ</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"/>
 <style>
   :root{
     --bg:#0a1428; --panel:#0f1c3a; --panel2:#152545; --text:#e6ecff;
@@ -432,8 +432,8 @@
   <div id="map"></div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/suncalc@1.9.0/suncalc.js" integrity="sha384-oiKvfHOCwLd5BVeyS4Zc1WW9KNRFXyXCkijYVrNbvw6BzoPFC+HiHzZi8FlRAvQ3" crossorigin="anonymous"></script>
 <script>
 // ---------- Sample observation spots (Bortle値は概算) ----------
 const SPOTS = [
@@ -471,7 +471,7 @@ const SHOWERS = [
 // ---------- State ----------
 const state = {
   when: roundToHour(new Date(Date.now() + 6*3600*1000)),
-  weights: {w1:50, w2:35, w3:15, w4:0}, // 固定（アクセススコアw4は除外）
+  weights: {w1:50, w2:35, w3:15}, // 固定（天候50 / 光害35 / 月・イベント15）
   user: null, // {lat,lon}
   cache: new Map(), // weather cache
   markers: new Map(), // spotIdx -> leaflet marker
@@ -506,14 +506,6 @@ function haversine(a,b){
   const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon);
   const s=Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(s));
-}
-function accessScore(spot){
-  if(!state.user) return 90;
-  const d=haversine(state.user,{lat:spot[1],lon:spot[2]}); // km
-  const t=d/50*60; // assume 50km/h avg
-  let s = 100 - Math.min(d,150)/1.5 - Math.min(t,180)/3;
-  if(spot[4]) s += 5;
-  return Math.max(0, Math.min(100, Math.round(s)));
 }
 
 // ---------- Bortle -> light pollution score ----------
@@ -865,13 +857,13 @@ async function refresh(){
   // (2) 全スポットのスコア計算
   const items = await Promise.all(SPOTS.map(async (sp, idx) => {
     const w = await fetchWeather(sp[1], sp[2], state.when);
-    const ws = weatherScore(w), ls = lpScore(sp[3]), es = ev.score, as = accessScore(sp);
+    const ws = weatherScore(w), ls = lpScore(sp[3]), es = ev.score;
     const total = totalScore(ws, ls, es);
-    return {idx, sp, w, ws, ls, es, as, total};
+    return {idx, sp, w, ws, ls, es, total};
   }));
 
   items.sort((a,b)=>b.total-a.total);
-  items.forEach(({idx,sp,w,ws,ls,es,as,total},i)=>{
+  items.forEach(({idx,sp,w,ws,ls,es,total},i)=>{
     const m = L.marker([sp[1],sp[2]], {icon:pin(total)}).addTo(layer);
     const dist = state.user ? haversine(state.user,{lat:sp[1],lon:sp[2]}).toFixed(0)+"km" : "—";
     const eta = state.user ? Math.round(haversine(state.user,{lat:sp[1],lon:sp[2]})/50*60)+"分" : "—";
@@ -900,7 +892,7 @@ async function refresh(){
         雲量 ${w.cloud}% / 湿度 ${w.humidity}% / 視程 ${(w.visibility/1000).toFixed(0)}km / 風 ${w.wind}m/s<br>
         Bortle ${sp[3]} (NSB ${bortleToNSB(sp[3]).toFixed(1)}) ・ 駐車場${sp[4]?"あり":"要確認"} ・ 距離 ${dist} (約${eta})
       </div>
-      <div style="margin-top:6px"><a href="${gmaps}" target="_blank">Google マップで経路を開く →</a></div>
+      <div style="margin-top:6px"><a href="${gmaps}" target="_blank" rel="noopener noreferrer">Google マップで経路を開く →</a></div>
     `;
     m.bindPopup(html, {maxWidth:280});
     state.markers.set(idx, m);
