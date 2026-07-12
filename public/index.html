@@ -730,6 +730,9 @@ buildLightPollution();
 // ---------- 雲量オーバーレイ（Open-Meteo グリッド） ----------
 const cloudLayer = L.layerGroup();
 let cloudFetchToken = 0;
+let refreshToken = 0;
+let localWeatherToken = 0;
+let weatherWidgetToken = 0;
 async function buildCloudOverlay(){
   const myToken = ++cloudFetchToken;
   const loading = document.getElementById('cloudLoading');
@@ -844,8 +847,7 @@ function pin(score){
 function bar(p){ return `<div class="pop-bar"><span style="width:${p}%;background:${colorFor(p)}"></span></div>`; }
 
 async function refresh(){
-  layer.clearLayers();
-  state.markers.clear();
+  const myToken = ++refreshToken;
   const ev = eventScore(state.when);  // 月/イベントスコア（総合スコアに使用・表示は観測時刻カードへ移行）
 
   // (1) 基準地点（現在地 or マップ中心）の簡易気象
@@ -862,6 +864,10 @@ async function refresh(){
     return {idx, sp, w, ws, ls, es, total};
   }));
 
+  if(myToken !== refreshToken) return; // 古い refresh() の結果は破棄（マーカーを一切書き換えない）
+
+  layer.clearLayers();
+  state.markers.clear();
   items.sort((a,b)=>b.total-a.total);
   items.forEach(({idx,sp,w,ws,ls,es,total},i)=>{
     const m = L.marker([sp[1],sp[2]], {icon:pin(total)}).addTo(layer);
@@ -904,12 +910,14 @@ async function refresh(){
 
 // ---------- 基準地点の気象 ----------
 async function renderLocalWeather(){
+  const myToken = ++localWeatherToken;
   const where = state.user
     ? {lat:state.user.lat, lon:state.user.lon, label:`現在地 (${state.user.lat.toFixed(2)}, ${state.user.lon.toFixed(2)})`}
     : (()=>{ const c=map.getCenter(); return {lat:c.lat, lon:c.lng, label:`地図中心 (${c.lat.toFixed(2)}, ${c.lng.toFixed(2)})`}; })();
   document.querySelector('#locWeather .loc-where').textContent =
     `基準地点: ${where.label} ／ ${state.when.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`;
   const w = await fetchWeather(where.lat, where.lon, state.when);
+  if(myToken !== localWeatherToken) return; // 古い呼び出しの結果でDOMを上書きしない
   const ws = weatherScore(w);
   document.getElementById('lwCloud').textContent = `${w.cloud}%`;
   document.getElementById('lwHum').textContent   = `${w.humidity}%`;
@@ -930,15 +938,17 @@ function getWeatherIcon(w) {
   return '☀️';
 }
 async function renderWeatherWidget(){
+  const myToken = ++weatherWidgetToken;
   const card = document.getElementById('weatherWidgetCard');
   const where = state.user
     ? {lat:state.user.lat, lon:state.user.lon, label:`現在地`}
     : (()=>{ const c=map.getCenter(); return {lat:c.lat, lon:c.lng, label:`地図中心`}; })();
-  
+
   document.getElementById('wwTitle').textContent = `${where.label} の今後の天候推移`;
-  
+
   const wData = await fetchWeather(where.lat, where.lon, state.when);
   if (!wData.hourly) return;
+  if(myToken !== weatherWidgetToken) return; // 古い呼び出しの結果でウィジェットを上書きしない
   card.style.display = 'flex';
   
   // タブのアクティブ状態更新
@@ -1202,7 +1212,6 @@ function updateTimeUI(d){
 function setWhen(d){
   state.when = roundToHour(d);
   updateTimeUI(state.when);
-  state.cache.clear();
   refresh();
 }
 
