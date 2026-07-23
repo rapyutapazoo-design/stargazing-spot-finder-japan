@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>Calendar Dev</title>
+    <style>
+      :root{ --bg:#0a1428; --panel:#0f1c3a; --panel2:#152545; --text:#e6ecff;
+        --muted:#9aa6c7; --accent:#7fb3ff; --line:#1f2f55; }
+      body{ background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; padding:40px; }
+    </style>
+  </head>
+  <body>
+    <button id="btn-pick">📅 日時を指定</button>
+    <div id="dev-anchor"></div>
+    <script type="module">
+      import { mount } from '/src/main.jsx';
+      const btn = document.getElementById('btn-pick');
+      btn.addEventListener('click', () => {
+        mount(btn, {
+          initial: new Date(),
+          roundToHalfHour: (d) => { const x=new Date(d); const m=x.getMinutes();
+            x.setMinutes(m<15?0:m<45?30:60,0,0); return x; },
+          onSelect: (d) => console.log('selected:', d.toString()),
+        });
+      });
+    </script>
+  </body>
+</html>

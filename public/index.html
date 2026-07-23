@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星空おすすめマップ — プロトタイプ</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"/>
+<link rel="stylesheet" href="./calendar-widget/calendar.css">
 <style>
   :root{
     --bg:#0a1428; --panel:#0f1c3a; --panel2:#152545; --text:#e6ecff;
@@ -454,6 +455,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js" integrity="sha384-oiKvfHOCwLd5BVeyS4Zc1WW9KNRFXyXCkijYVrNbvw6BzoPFC+HiHzZi8FlRAvQ3" crossorigin="anonymous"></script>
+<script src="./calendar-widget/calendar.iife.js"></script>
 <script>
 // ---------- Sample observation spots (Bortle値は概算) ----------
 const SPOTS = [
@@ -1290,8 +1292,19 @@ document.getElementById('timeText').addEventListener('keydown', e => {
 });
 wel.addEventListener('change', e => { if(e.target.value) setWhen(new Date(e.target.value)); });
 
-// 「📅 日時を指定」ボタン → ネイティブ日時ピッカーを開く（既存機構を流用）
-document.getElementById('btn-pick').addEventListener('click', openWhenPicker);
+// 「📅 日時を指定」ボタン → React カレンダー（未ロード時はネイティブへフォールバック）
+document.getElementById('btn-pick').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  if (window.StargazerCalendar && typeof window.StargazerCalendar.mount === 'function') {
+    window.StargazerCalendar.mount(btn, {
+      initial: state.when,
+      roundToHalfHour: roundToHalfHour,
+      onSelect: (d) => setWhen(d),
+    });
+  } else {
+    openWhenPicker();
+  }
+});
 
 // プリセット
 document.getElementById('btn-tonight').onclick = () => {
