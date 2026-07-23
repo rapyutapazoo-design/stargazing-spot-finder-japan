@@ -1,5 +1,12 @@
 .sgc-popover{
-  position:absolute; z-index:10000;
+  /* position:fixedはJS側（main.jsxのcontainer）が担う。ここをfixedにすると
+     このpopoverが可視領域(viewport)基準の独立した包含ブロックを持ち、
+     containerのfixed位置とは無関係な位置に外れてしまう
+     （fixedの包含ブロックはposition:absolute/fixedな祖先を無視して常にviewport）。
+     position:relativeでcontainer内のフローに留め、z-indexのみ有効化する。 */
+  position:relative; z-index:10000;
+  display:flex; flex-direction:column;
+  max-height:calc(100vh - 16px);
   background:var(--panel2,#152545);
   border:1px solid var(--line,#1f2f55);
   border-radius:14px;
@@ -8,6 +15,12 @@
   animation:sgc-pop .14s ease-out;
 }
 @keyframes sgc-pop{ from{opacity:0; transform:translateY(-6px) scale(.98);} to{opacity:1; transform:none;} }
+
+.sgc-scroll{
+  overflow-y:auto;
+  flex:1 1 auto;
+  min-height:0; /* flex子要素でoverflow:autoを効かせるために必須 */
+}
 
 .sgc-popover .rdp-root{
   --rdp-accent-color:var(--accent,#7fb3ff);
@@ -29,13 +42,13 @@
 .sgc-popover .rdp-button_previous,
 .sgc-popover .rdp-button_next{ color:var(--accent,#7fb3ff); border-radius:8px; }
 
-.sgc-timerow{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+.sgc-timerow{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-shrink:0; }
 .sgc-timerow label{ font-size:12px; color:var(--muted,#9aa6c7); }
 .sgc-timerow select{
   flex:1; background:#0a1734; color:var(--text,#e6ecff);
   border:1px solid var(--line,#1f2f55); border-radius:8px; padding:6px 8px; font-size:13px;
 }
-.sgc-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.sgc-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; flex-shrink:0; }
 .sgc-actions button{ border-radius:8px; padding:7px 12px; font-size:13px; cursor:pointer; border:1px solid var(--line,#1f2f55); }
 .sgc-cancel{ background:transparent; color:var(--muted,#9aa6c7); }
 .sgc-confirm{ background:var(--accent,#7fb3ff); color:#0a1428; border-color:transparent; font-weight:700; }

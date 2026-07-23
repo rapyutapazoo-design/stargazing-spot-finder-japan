@@ -6,8 +6,10 @@ import Calendar from './Calendar.jsx';
 let container = null;
 let root = null;
 let outsideHandler = null;
+let resizeObserver = null;
 
 function unmount() {
+  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
   if (root) { root.unmount(); root = null; }
   if (container && container.parentNode) container.parentNode.removeChild(container);
   container = null;
@@ -22,9 +24,51 @@ function escHandler(e) { if (e.key === 'Escape') unmount(); }
 
 function positionContainer(anchorEl) {
   const r = anchorEl.getBoundingClientRect();
-  container.style.position = 'absolute';
-  container.style.top = `${window.scrollY + r.bottom + 6}px`;
-  container.style.left = `${window.scrollX + r.left}px`;
+  const MARGIN = 8;
+  const GAP = 6;
+
+  container.style.position = 'fixed';
+  container.style.top = `${r.bottom + GAP}px`;
+  container.style.left = `${r.left}px`;
+  container.style.visibility = 'hidden';
+
+  const reposition = () => {
+    if (!container) return; // unmount済みなら何もしない
+    const cw = container.offsetWidth;
+    const ch = container.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let top;
+    const spaceBelow = vh - r.bottom - GAP;
+    const spaceAbove = r.top - GAP;
+    if (ch <= spaceBelow) {
+      top = r.bottom + GAP;
+    } else if (ch <= spaceAbove) {
+      top = r.top - GAP - ch;
+    } else {
+      top = Math.max(MARGIN, Math.min(r.bottom + GAP, vh - ch - MARGIN));
+    }
+    top = Math.max(MARGIN, top);
+
+    let left = r.left;
+    if (left + cw > vw - MARGIN) left = vw - cw - MARGIN;
+    left = Math.max(MARGIN, left);
+
+    container.style.top = `${top}px`;
+    container.style.left = `${left}px`;
+    container.style.visibility = 'visible';
+  };
+
+  // 初回はrAFで実寸測定後に配置する。react-day-picker側の内部レイアウト
+  // 副作用（月グリッドの行数確定など）が初回フレーム後にも実寸へ影響することが
+  // あるため、ResizeObserverでサイズ確定まで追従してクランプし直す。
+  requestAnimationFrame(reposition);
+
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => reposition());
+    resizeObserver.observe(container);
+  }
 }
 
 export function mount(anchorEl, { initial, onSelect, roundToHalfHour } = {}) {

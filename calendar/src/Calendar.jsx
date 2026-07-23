@@ -24,14 +24,16 @@ export default function Calendar({ initial, onConfirm, onCancel }) {
 
   return (
     <div className="sgc-popover" role="dialog" aria-label="観測日時を選択">
-      <DayPicker
-        mode="single"
-        required
-        locale={ja}
-        selected={day}
-        onSelect={setDay}
-        weekStartsOn={0}
-      />
+      <div className="sgc-scroll">
+        <DayPicker
+          mode="single"
+          required
+          locale={ja}
+          selected={day}
+          onSelect={setDay}
+          weekStartsOn={0}
+        />
+      </div>
       <div className="sgc-timerow">
         <label htmlFor="sgc-time">時刻</label>
         <select id="sgc-time" value={time} onChange={(e) => setTime(e.target.value)}>
