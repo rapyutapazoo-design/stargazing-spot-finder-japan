@@ -90,6 +90,13 @@
   .preset-row{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:6px}
   .preset{background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:5px 0;font-size:11px;cursor:pointer;font-weight:600}
   .preset:hover{background:#13234a}
+  .pick-row{display:grid;grid-template-columns:1fr;gap:4px;margin-top:6px}
+  .pick{width:100%;padding:8px 10px;border-radius:8px;cursor:pointer;
+        background:var(--accent);color:#05060a;font-weight:700;border:1px solid var(--accent);
+        transition:filter .12s ease, transform .04s ease}
+  .pick:hover{filter:brightness(1.1)}
+  .pick:active{transform:translateY(1px)}
+  .pick:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .hidden-when{position:absolute;left:-9999px;top:-9999px;width:0;height:0;opacity:0}
 
   /* 現在地マーカー（脈動する青い点） */
@@ -211,7 +218,7 @@
           <div class="t-time" id="tTime">--:--</div>
           <div class="t-rel small" id="tRel">—</div>
           <span class="t-pick" aria-hidden="true">📅</span>
-          <input id="whenInput" type="datetime-local" class="time-input-overlay" aria-label="観測日時を選択">
+          <input id="whenInput" type="datetime-local" step="1800" class="time-input-overlay" aria-label="観測日時を選択">
         </div>
       </div>
       <div class="moon-info" id="moonInfo">
@@ -237,7 +244,10 @@
         <button class="preset" id="btn-tomorrow">明日21時</button>
         <button class="preset" id="btn-weekend">今週末21時</button>
       </div>
-      <div class="small" style="color:var(--muted);margin-top:6px"><b>−1時/＋1時・−1日/＋1日</b>ボタンで移動。時刻表示をクリックで日時を直接選択も可。</div>
+      <div class="pick-row">
+        <button class="pick" id="btn-pick" type="button">📅 日時を指定</button>
+      </div>
+      <div class="small" style="color:var(--muted);margin-top:6px"><b>−1時/＋1時・−1日/＋1日</b>ボタンで移動。<b>「📅 日時を指定」</b>ボタンで任意の日時（30分単位）を選択できます。</div>
       <div id="locWeather" class="loc-weather">
         <div class="loc-where small">基準地点を取得中…</div>
         <div class="loc-grid" id="locGrid">
@@ -480,7 +490,7 @@ const SHOWERS = [
 
 // ---------- State ----------
 const state = {
-  when: roundToHour(new Date(Date.now() + 6*3600*1000)),
+  when: roundToHalfHour(new Date(Date.now() + 6*3600*1000)),
   weights: {w1:50, w2:35, w3:15}, // 固定（天候50 / 光害35 / 月・イベント15）
   user: null, // {lat,lon}
   cache: new Map(), // weather cache
@@ -488,7 +498,12 @@ const state = {
   chartType: 'temp', // 'temp', 'precip', 'score'
 };
 
-function roundToHour(d){ const x=new Date(d); x.setMinutes(0,0,0); return x; }
+function roundToHalfHour(d){
+  const x = new Date(d);
+  const m = x.getMinutes();
+  x.setMinutes(m < 15 ? 0 : m < 45 ? 30 : 60, 0, 0); // 60→翌時00:00へ自動繰り上げ
+  return x;
+}
 function fmtLocal(d){ const off=d.getTimezoneOffset()*60000; return new Date(d-off).toISOString().slice(0,16); }
 
 // ---------- Astronomy: simple moon age ----------
@@ -1249,7 +1264,7 @@ function updateTimeUI(d){
 }
 
 function setWhen(d){
-  state.when = roundToHour(d);
+  state.when = roundToHalfHour(d);
   updateTimeUI(state.when);
   refresh();
 }
@@ -1274,6 +1289,9 @@ document.getElementById('timeText').addEventListener('keydown', e => {
   if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openWhenPicker(); }
 });
 wel.addEventListener('change', e => { if(e.target.value) setWhen(new Date(e.target.value)); });
+
+// 「📅 日時を指定」ボタン → ネイティブ日時ピッカーを開く（既存機構を流用）
+document.getElementById('btn-pick').addEventListener('click', openWhenPicker);
 
 // プリセット
 document.getElementById('btn-tonight').onclick = () => {
