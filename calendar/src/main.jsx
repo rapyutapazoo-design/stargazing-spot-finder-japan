@@ -22,14 +22,19 @@ function unmount() {
 
 function escHandler(e) { if (e.key === 'Escape') unmount(); }
 
-function positionContainer(anchorEl) {
+function positionContainer(anchorEl, placement = 'below') {
   const r = anchorEl.getBoundingClientRect();
   const MARGIN = 8;
   const GAP = 6;
 
   container.style.position = 'fixed';
-  container.style.top = `${r.bottom + GAP}px`;
-  container.style.left = `${r.left}px`;
+  if (placement === 'right') {
+    container.style.top = `${r.top}px`;
+    container.style.left = `${r.right + GAP}px`;
+  } else {
+    container.style.top = `${r.bottom + GAP}px`;
+    container.style.left = `${r.left}px`;
+  }
   container.style.visibility = 'hidden';
 
   const reposition = () => {
@@ -39,21 +44,38 @@ function positionContainer(anchorEl) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    let top;
-    const spaceBelow = vh - r.bottom - GAP;
-    const spaceAbove = r.top - GAP;
-    if (ch <= spaceBelow) {
-      top = r.bottom + GAP;
-    } else if (ch <= spaceAbove) {
-      top = r.top - GAP - ch;
-    } else {
-      top = Math.max(MARGIN, Math.min(r.bottom + GAP, vh - ch - MARGIN));
-    }
-    top = Math.max(MARGIN, top);
+    let top, left;
 
-    let left = r.left;
-    if (left + cw > vw - MARGIN) left = vw - cw - MARGIN;
-    left = Math.max(MARGIN, left);
+    if (placement === 'right') {
+      const spaceRight = vw - r.right - GAP;
+      if (cw <= spaceRight) {
+        left = r.right + GAP;
+      } else {
+        // 右に入らない場合は左側へフォールバック、それでも溢れる場合は右端クランプ
+        left = Math.max(MARGIN, r.left - GAP - cw);
+        if (left + cw > vw - MARGIN) left = vw - cw - MARGIN;
+      }
+      left = Math.max(MARGIN, left);
+
+      top = r.top;
+      if (top + ch > vh - MARGIN) top = vh - ch - MARGIN;
+      top = Math.max(MARGIN, top);
+    } else {
+      const spaceBelow = vh - r.bottom - GAP;
+      const spaceAbove = r.top - GAP;
+      if (ch <= spaceBelow) {
+        top = r.bottom + GAP;
+      } else if (ch <= spaceAbove) {
+        top = r.top - GAP - ch;
+      } else {
+        top = Math.max(MARGIN, Math.min(r.bottom + GAP, vh - ch - MARGIN));
+      }
+      top = Math.max(MARGIN, top);
+
+      left = r.left;
+      if (left + cw > vw - MARGIN) left = vw - cw - MARGIN;
+      left = Math.max(MARGIN, left);
+    }
 
     container.style.top = `${top}px`;
     container.style.left = `${left}px`;
@@ -71,11 +93,11 @@ function positionContainer(anchorEl) {
   }
 }
 
-export function mount(anchorEl, { initial, onSelect, roundToHalfHour } = {}) {
+export function mount(triggerEl, { initial, onSelect, roundToHalfHour, anchorEl, placement } = {}) {
   unmount();
   container = document.createElement('div');
   document.body.appendChild(container);
-  positionContainer(anchorEl);
+  positionContainer(anchorEl || triggerEl, placement || 'below');
   root = createRoot(container);
 
   const handleConfirm = (d) => {
@@ -88,7 +110,7 @@ export function mount(anchorEl, { initial, onSelect, roundToHalfHour } = {}) {
     <Calendar initial={initial} onConfirm={handleConfirm} onCancel={unmount} />
   );
 
-  outsideHandler = (e) => { if (container && !container.contains(e.target) && e.target !== anchorEl) unmount(); };
+  outsideHandler = (e) => { if (container && !container.contains(e.target) && e.target !== triggerEl) unmount(); };
   setTimeout(() => {
     document.addEventListener('mousedown', outsideHandler, true);
     document.addEventListener('keydown', escHandler, true);

@@ -1292,10 +1292,15 @@ wel.addEventListener('change', e => { if(e.target.value) setWhen(new Date(e.targ
 document.getElementById('btn-pick').addEventListener('click', (e) => {
   const btn = e.currentTarget;
   if (window.StargazerCalendar && typeof window.StargazerCalendar.mount === 'function') {
+    const zoomEl = document.querySelector('#map .leaflet-control-zoom');
+    const mapEl = document.getElementById('map');
+    const anchorEl = zoomEl || mapEl || btn;
     window.StargazerCalendar.mount(btn, {
       initial: state.when,
       roundToHalfHour: roundToHalfHour,
       onSelect: (d) => setWhen(d),
+      anchorEl: anchorEl,
+      placement: 'right',
     });
   } else {
     openWhenPicker();
