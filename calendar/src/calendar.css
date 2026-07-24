@@ -7,14 +7,45 @@
   position:relative; z-index:10000;
   display:flex; flex-direction:column;
   max-height:calc(100vh - 16px);
-  background:var(--panel2,#152545);
+  background:rgba(21,37,69,.82);
   border:1px solid var(--line,#1f2f55);
   border-radius:14px;
-  box-shadow:0 12px 32px rgba(0,0,0,.45);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,.45),
+    0 0 0 1px rgba(127,179,255,.10),
+    0 8px 40px rgba(127,179,255,.18);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  backdrop-filter:blur(14px) saturate(1.2);
   padding:12px; color:var(--text,#e6ecff);
-  animation:sgc-pop .14s ease-out;
+  transform-origin:left center;
+  animation:sgc-pop .16s cubic-bezier(.2,.8,.25,1) both;
 }
-@keyframes sgc-pop{ from{opacity:0; transform:translateY(-6px) scale(.98);} to{opacity:1; transform:none;} }
+@keyframes sgc-pop{
+  from{ opacity:0; transform:scale(.96) translateX(-4px); }
+  to{   opacity:1; transform:none; }
+}
+@keyframes sgc-pop-out{
+  from{ opacity:1; transform:none; }
+  to{   opacity:0; transform:scale(.97) translateX(-3px); }
+}
+.sgc-popover.sgc-closing{
+  animation:sgc-pop-out .18s cubic-bezier(.4,0,.7,.2) both;
+  pointer-events:none;
+}
+@media (prefers-reduced-motion: reduce){
+  .sgc-popover, .sgc-popover.sgc-closing{ animation-duration:.001ms; }
+}
+.sgc-popover::before{
+  content:"";
+  position:absolute;
+  left:-7px; top:22px;
+  width:14px; height:14px;
+  background:rgba(21,37,69,.82);
+  border-left:1px solid var(--line,#1f2f55);
+  border-bottom:1px solid var(--line,#1f2f55);
+  border-bottom-left-radius:3px;
+  transform:rotate(45deg);
+}
 
 .sgc-scroll{
   overflow-y:auto;
