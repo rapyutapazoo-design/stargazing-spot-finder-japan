@@ -23,6 +23,3 @@ npm-debug.log*
 # AI agent caches
 .claude/
 
-# Calendar widget build artifacts (non-committed)
-public/calendar-widget/
-

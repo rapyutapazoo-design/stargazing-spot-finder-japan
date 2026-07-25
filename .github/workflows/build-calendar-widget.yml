@@ -1,0 +1,52 @@
+name: Build calendar widget
+
+# calendar/ の変更を public/calendar-widget/ へ自動反映する。
+# public/calendar-widget/** はここでのみ更新するため、それをトリガーパスから
+# 除外することでコミット→再トリガーの無限ループを防いでいる。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'calendar/src/**'
+      - 'calendar/index.html'
+      - 'calendar/vite.config.js'
+      - 'calendar/package.json'
+      - 'calendar/package-lock.json'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: calendar/package-lock.json
+
+      - name: Install deps
+        working-directory: calendar
+        run: npm ci
+
+      - name: Build widget
+        working-directory: calendar
+        run: npm run build
+
+      - name: Commit built widget if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/calendar-widget
+          if git diff --cached --quiet; then
+            echo "No changes to calendar widget build output."
+          else
+            git commit -m "chore(calendar): ウィジェットビルド成果物を自動更新 [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
