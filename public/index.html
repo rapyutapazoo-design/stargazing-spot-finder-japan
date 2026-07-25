@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星空おすすめマップ — プロトタイプ</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"/>
+<link rel="stylesheet" href="./calendar-widget/calendar.css">
 <style>
   :root{
     --bg:#0a1428; --panel:#0f1c3a; --panel2:#152545; --text:#e6ecff;
@@ -21,7 +22,6 @@
   #side{background:var(--panel);border-right:1px solid var(--line);padding:14px 16px;overflow:auto}
   #map{height:100%;width:100%;background:#0c1c3a}
   h1{font-size:16px;margin:0 0 4px;color:var(--accent)}
-  .sub{color:var(--muted);font-size:12px;margin-bottom:12px}
   .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
   .card h2{font-size:12px;margin:0 0 8px;color:var(--accent);letter-spacing:.04em;text-transform:uppercase}
   label{display:block;font-size:12px;margin-top:6px;color:var(--muted)}
@@ -75,7 +75,6 @@
   /* 時刻ピッカー */
   .time-pad{display:flex;align-items:center;gap:12px;margin-bottom:8px}
   .time-text{position:relative;flex:1;text-align:center;line-height:1.15;cursor:pointer;user-select:none;-webkit-user-select:none;padding:4px;border-radius:6px}
-  .t-pick{position:absolute;top:2px;right:5px;font-size:11px;opacity:.45;pointer-events:none}
   .time-input-overlay{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer}
   .time-text:hover{background:#13234a}
   .time-text:focus{outline:1px solid var(--accent)}
@@ -195,7 +194,6 @@
 <div id="app">
   <aside id="side">
     <h1>★ 星空おすすめマップ</h1>
-    <div class="sub">気象 × 光害 × 月齢 × アクセス性 で観測スポットの「今夜のおすすめ度」を可視化（プロトタイプ）</div>
 
     <div class="card">
       <h2>観測時刻</h2>
@@ -217,7 +215,6 @@
           <div class="t-date"><span id="tDate">--/--</span> <span id="tDay" class="t-day">(-)</span></div>
           <div class="t-time" id="tTime">--:--</div>
           <div class="t-rel small" id="tRel">—</div>
-          <span class="t-pick" aria-hidden="true">📅</span>
           <input id="whenInput" type="datetime-local" step="1800" class="time-input-overlay" aria-label="観測日時を選択">
         </div>
       </div>
@@ -454,6 +451,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js" integrity="sha384-oiKvfHOCwLd5BVeyS4Zc1WW9KNRFXyXCkijYVrNbvw6BzoPFC+HiHzZi8FlRAvQ3" crossorigin="anonymous"></script>
+<script src="./calendar-widget/calendar.iife.js"></script>
 <script>
 // ---------- Sample observation spots (Bortle値は概算) ----------
 const SPOTS = [
@@ -1290,8 +1288,24 @@ document.getElementById('timeText').addEventListener('keydown', e => {
 });
 wel.addEventListener('change', e => { if(e.target.value) setWhen(new Date(e.target.value)); });
 
-// 「📅 日時を指定」ボタン → ネイティブ日時ピッカーを開く（既存機構を流用）
-document.getElementById('btn-pick').addEventListener('click', openWhenPicker);
+// 「📅 日時を指定」ボタン → React カレンダー（未ロード時はネイティブへフォールバック）
+document.getElementById('btn-pick').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  if (window.StargazerCalendar && typeof window.StargazerCalendar.mount === 'function') {
+    const zoomEl = document.querySelector('#map .leaflet-control-zoom');
+    const mapEl = document.getElementById('map');
+    const anchorEl = zoomEl || mapEl || btn;
+    window.StargazerCalendar.mount(btn, {
+      initial: state.when,
+      roundToHalfHour: roundToHalfHour,
+      onSelect: (d) => setWhen(d),
+      anchorEl: anchorEl,
+      placement: 'right',
+    });
+  } else {
+    openWhenPicker();
+  }
+});
 
 // プリセット
 document.getElementById('btn-tonight').onclick = () => {
