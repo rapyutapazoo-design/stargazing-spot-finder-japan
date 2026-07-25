@@ -104,6 +104,9 @@ export function mount(triggerEl, { initial, onSelect, roundToHalfHour, anchorEl,
 
   container = document.createElement('div');
   container.style.position = 'fixed';   // 採寸を body フローから隔離
+  container.style.zIndex = '10000';     // Leaflet(最大z-index 1000)より確実に前面へ。
+                                        // ここ（body直下の実位置要素）に付けないと、内側.sgc-popoverの
+                                        // z-indexはcontainerのstacking context内に閉じ込められ地図の裏へ回り込む。
   container.style.top = '-9999px';      // 採寸中の一瞬の誤位置露出を防ぐ画面外初期値
   container.style.left = '-9999px';
   document.body.appendChild(container);

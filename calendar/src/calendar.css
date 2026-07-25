@@ -3,8 +3,10 @@
      このpopoverが可視領域(viewport)基準の独立した包含ブロックを持ち、
      containerのfixed位置とは無関係な位置に外れてしまう
      （fixedの包含ブロックはposition:absolute/fixedな祖先を無視して常にviewport）。
-     position:relativeでcontainer内のフローに留め、z-indexのみ有効化する。 */
-  position:relative; z-index:10000;
+     position:relativeでcontainer内のフローに留める。
+     重なり順(z-index)はcontainer側（main.jsx）で管理する。ここに付けても
+     container内部のstacking contextに閉じ込められ、地図(Leaflet)とは競合できない。 */
+  position:relative;
   display:flex; flex-direction:column;
   max-height:calc(100vh - 16px);
   background:rgba(21,37,69,.82);
